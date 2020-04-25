@@ -22,10 +22,11 @@ func SearchAllPath(file string, genPath string, pkg string, opts ...Option) (err
 		sc.pkg = pkg
 		return writeGen(sc)
 	}
-	modBaser, err := GetModBase()
+	modBaser, err := getModBase()
 	if err != nil {
 		return
 	}
+	pkg = strings.Replace(pkg, "-", "_", -1)
 	sc = &searcher{
 		genPath:    genPath,
 		pkg:        pkg,
@@ -121,7 +122,7 @@ func (sc *searcher) getPkgPath(filePath string) (pkgPath string) {
 	if err != nil {
 		return
 	}
-	dir := GetGoModDir()
+	dir := getGoModDir()
 	if len(abs) < len(dir) {
 		return
 	}

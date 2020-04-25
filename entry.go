@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
 )
 
 func init() {
@@ -29,15 +28,13 @@ func newGenOpt(genPath string, opts ...Option) *opt {
 func (o *opt) fix() {
 	if len(o.pkg) == 0 {
 		var err error
-		o.pkg, err = filepath.Abs(o.genPath)
+		o.pkg, err = getPathGoPkgName(o.genPath)
 		if err != nil {
 			o.pkg = filePrefix
-		} else {
-			o.pkg = filepath.Base(o.pkg)
 		}
 	}
 	if len(o.searchPath) == 0 {
-		modPath := GetGoModDir()
+		modPath := getGoModDir()
 		if len(modPath) > 0 {
 			o.searchPath = modPath
 		}

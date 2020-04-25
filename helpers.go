@@ -3,6 +3,8 @@ package gutowire
 import (
 	"bytes"
 	"errors"
+	"go/parser"
+	"go/token"
 	"io/ioutil"
 	"os/exec"
 	"path/filepath"
@@ -13,8 +15,8 @@ import (
 
 var modTmp string
 
-func GetModBase() (modBase string, err error) {
-	modpath := GetGoModFilePath()
+func getModBase() (modBase string, err error) {
+	modpath := getGoModFilePath()
 	mb, _ := ioutil.ReadFile(modpath)
 	f, err := modfile.Parse("", mb, func(path, version string) (s string, e error) {
 		return version, nil
@@ -30,13 +32,13 @@ func GetModBase() (modBase string, err error) {
 	return
 }
 
-func GetGoModDir() (modPath string) {
-	mod := GetGoModFilePath()
+func getGoModDir() (modPath string) {
+	mod := getGoModFilePath()
 	modPath, _ = filepath.Split(mod)
 	return
 }
 
-func GetGoModFilePath() (modPath string) {
+func getGoModFilePath() (modPath string) {
 	if len(modTmp) > 0 {
 		return modTmp
 	}
@@ -48,4 +50,36 @@ func GetGoModFilePath() (modPath string) {
 	mod = strings.Trim(mod, "\n")
 	modTmp = mod
 	return mod
+}
+
+func getPathGoPkgName(pathStr string) (pkg string, err error) {
+	info, err := ioutil.ReadDir(pathStr)
+	// todo:if not exist return getGoPkgNameByDir
+	if err != nil {
+		return
+	}
+	if len(info) == 0 {
+		return getGoPkgNameByDir(pathStr), nil
+	}
+	for _, f := range info {
+		if f.IsDir() {
+			continue
+		}
+		if strings.HasSuffix(f.Name(), ".go") {
+			bs, err := ioutil.ReadFile(filepath.Join(pathStr, f.Name()))
+			if err != nil {
+				return "", err
+			}
+			f, err := parser.ParseFile(token.NewFileSet(), "", bs, parser.ParseComments)
+			if err != nil {
+				return "", err
+			}
+			return f.Name.Name, nil
+		}
+	}
+	return
+}
+
+func getGoPkgNameByDir(pathStr string) (pkg string) {
+	return filepath.Base(pathStr)
 }

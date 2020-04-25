@@ -37,48 +37,9 @@ func (sc *searcher) clean() (err error) {
 	return
 }
 
-func (sc *searcher) getPathGoPkgName() (pkg string, err error) {
-	pathStr := sc.genPath
-	info, err := ioutil.ReadDir(pathStr)
-	// todo:if not exist return getGoPkgNameByDir
-	if err != nil {
-		return
-	}
-	if len(info) == 0 {
-		return getGoPkgNameByDir(pathStr), nil
-	}
-	for _, f := range info {
-		if f.IsDir() {
-			continue
-		}
-		if strings.HasSuffix(f.Name(), ".go") {
-			bs, err := ioutil.ReadFile(filepath.Join(pathStr, f.Name()))
-			if err != nil {
-				return "", err
-			}
-			f, err := parser.ParseFile(token.NewFileSet(), "", bs, parser.ParseComments)
-			if err != nil {
-				return "", err
-			}
-			return f.Name.Name, nil
-		}
-	}
-	return
-}
-
-func getGoPkgNameByDir(pathStr string) (pkg string) {
-	return filepath.Base(pathStr)
-}
-
 func (sc *searcher) write() (err error) {
 	log.Printf("please wait for file [ %s ] writing ...", sc.genPath)
 	sc.sets = nil
-	if sc.pkg == "" {
-		sc.pkg, err = sc.getPathGoPkgName()
-		if err != nil {
-			return
-		}
-	}
 	_ = os.MkdirAll(sc.genPath, 0775)
 	_ = sc.clean()
 	for set, m := range sc.elementMap {
