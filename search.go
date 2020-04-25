@@ -125,16 +125,7 @@ func (sc *searcher) searchWire(file string) (err error) {
 }
 
 func (sc *searcher) getPkgPath(filePath string) (pkgPath string) {
-	abs, err := filepath.Abs(filePath)
-	if err != nil {
-		return
-	}
-	dir := getGoModDir()
-	if len(abs) < len(dir) {
-		return
-	}
-	pkgPath = filepath.ToSlash(filepath.Dir(filepath.Join(sc.modBase, abs[len(dir):])))
-	return
+	return getPkgPath(filePath, sc.modBase)
 }
 
 func (sc *searcher) analysisWireTag(rawTag, filePath string, decl *tmpDecl, f *ast.File, implementMap map[string]string) {
