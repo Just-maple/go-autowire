@@ -94,6 +94,7 @@ func (sc *searcher) writeSets() (err error) {
 	if len(sc.sets) == 0 {
 		return
 	}
+	sort.Strings(sc.sets)
 	var (
 		fileName = filepath.Join(sc.genPath, filePrefix+"_sets.go")
 		data     = wireSet{
@@ -103,7 +104,6 @@ func (sc *searcher) writeSets() (err error) {
 		}
 		bf = bytes.NewBuffer(nil)
 	)
-	sort.Strings(sc.sets)
 	err = setTemp.Execute(bf, &data)
 	if err != nil {
 		return
