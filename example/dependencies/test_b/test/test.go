@@ -1,17 +1,17 @@
 package test
 
 import (
-	"github.com/Just-maple/go-autowire/test/test_b/test/test"
+	test2 "github.com/Just-maple/go-autowire/example/dependencies/test_b/test/test"
 )
 
 // @autowire(set=struct)
 type Test struct {
-	test.Test
-	test.Test2
+	test2.Test
+	test2.Test2
 	T2 Test2
 }
 
 // @autowire(set=struct)
 type Test2 struct {
-	test.Test2
+	test2.Test2
 }

@@ -1,9 +1,9 @@
-package test
+package dependencies
 
 import (
-	"github.com/Just-maple/go-autowire/test/test_b"
-	"github.com/Just-maple/go-autowire/test/test_b/test"
-	"github.com/Just-maple/go-autowire/test/test_c"
+	"github.com/Just-maple/go-autowire/example/dependencies/test_b"
+	"github.com/Just-maple/go-autowire/example/dependencies/test_b/test"
+	"github.com/Just-maple/go-autowire/example/dependencies/test_c"
 )
 
 // @autowire(set=struct)

@@ -1,6 +1,8 @@
 package test_c
 
-import "github.com/Just-maple/go-autowire/test/test_b"
+import (
+	test_b2 "github.com/Just-maple/go-autowire/example/dependencies/test_b"
+)
 
 // @autowire(set=struct)
 type Test struct {
@@ -9,5 +11,5 @@ type Test struct {
 
 // @autowire(set=struct)
 type Test2 struct {
-	T3 test_b.Test2
+	T3 test_b2.Test2
 }
