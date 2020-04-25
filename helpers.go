@@ -80,6 +80,19 @@ func getPathGoPkgName(pathStr string) (pkg string, err error) {
 	return
 }
 
+func getPkgPath(filePath, modBase string) (pkgPath string) {
+	abs, err := filepath.Abs(filePath)
+	if err != nil {
+		return
+	}
+	dir := getGoModDir()
+	if len(abs) < len(dir) {
+		return
+	}
+	pkgPath = filepath.ToSlash(filepath.Dir(filepath.Join(modBase, abs[len(dir):])))
+	return
+}
+
 func getGoPkgNameByDir(pathStr string) (pkg string) {
 	return filepath.Base(pathStr)
 }
