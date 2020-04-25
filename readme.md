@@ -2,16 +2,23 @@
 > helps you to generate wire files with easy annotate
 
 
-this project is base on [wire](github.com/google/wire)
+this project is base on [wire](https://github.com/google/wire)
 
 but it did `simplify` the wire usage and make wire `much more stronger `
 
 ## Installation
 
-
+Install Wire by running:
 ```sh
-go install github.com/Just-maple/go-autowire/cmd/gutowire
+go get github.com/google/wire/cmd/wire
 ```
+then 
+
+Install Gutowire by running:
+```sh
+go get github.com/Just-maple/go-autowire/cmd/gutowire
+```
+and ensuring that $GOPATH/bin is added to your $PATH.
 
 ## Usage example
 
