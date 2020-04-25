@@ -10,12 +10,12 @@ but it did `simplify` the wire usage and make wire `much more stronger `
 
 
 ```sh
-go get github.com/Just-maple/go-autowire/cmd/gutowire
+go install github.com/Just-maple/go-autowire/cmd/gutowire
 ```
 
 ## Usage example
 
-If you want to build a `zoo`,you may need some dependencies
+If you want to build a `zoo`,you may need some dependencies like animals
 ```go
 package example
 
@@ -42,7 +42,7 @@ type Dog struct{
 }
 ```
 
-in traditional wire,you need to write some files to explain the wire relation to google/wire
+in traditional `wire`,you need to write some files to explain the wire relation to google/wire
 
 ```go
 package example_zoo
@@ -74,9 +74,13 @@ you need to rewrite your `wire.go` and comes much more harder to manager all the
 
 as your zoo goes bigger and bigger 
 
-but now
+life seems goes hard
 
-you can waist your time manager it or use `gutowire`
+but
+
+you can waist your time to continue manage this shit wire sets or 
+
+use `gutowire`
 
 write annotate as below
 ```go
@@ -135,5 +139,7 @@ and run
 ```sh
 gutowire -w ./example_zoo/init_zoo -s ./example_zoo
 ```
+
+all the wire files you need will genned and use it simply
 
 this's all
