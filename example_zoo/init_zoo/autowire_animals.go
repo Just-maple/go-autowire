@@ -13,5 +13,7 @@ var AnimalsSet = wire.NewSet(
 
 	wire.Struct(new(example_zoo.Cat), "*"),
 
-	wire.Struct(new(example_zoo.Dog), "*"),
+	example_zoo.NewLion,
+
+	example_zoo.ProvideDog,
 )

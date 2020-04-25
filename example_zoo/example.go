@@ -1,31 +1,47 @@
 package example_zoo
 
-// it will be collect into zooSet
-// @autowire(set=zoo)
-type Zoo struct {
-	Cat       Cat
-	Dog       Dog
-	FlyAnimal FlyAnimal
+type (
+	// it will be collect into zooSet
+	// @autowire(set=zoo)
+	Zoo struct {
+		Cat       Cat
+		Dog       Dog
+		Lion      Lion
+		FlyAnimal FlyAnimal
+	}
+
+	// it will be collect into animalsSet
+	// @autowire(set=animals)
+	Cat struct {
+	}
+
+	// @autowire(set=animals,FlyAnimal)
+	Bird struct {
+	}
+
+	FlyAnimal interface {
+		Fly()
+	}
+
+	// use provider func
+	Dog struct{}
+)
+
+// it will be collect into animalsSet
+// user provider func
+// @autowire(set=animals)
+func ProvideDog() Dog {
+	return Dog{}
 }
 
 // it will be collect into animalsSet
+// as it has a New method it will use NewLion as provider
 // @autowire(set=animals)
-type Cat struct {
-}
+type Lion struct{}
 
-type FlyAnimal interface {
-	Fly()
+func NewLion() Lion {
+	return Lion{}
 }
 
 // it will be collect into animalsSet and wire as interface FlyAnimal
-// @autowire(set=animals,FlyAnimal)
-type Bird struct {
-}
-
-func (b Bird) Fly() {
-}
-
-// it will be collect into animalsSet
-// @autowire(set=animals)
-type Dog struct {
-}
+func (b Bird) Fly() {}

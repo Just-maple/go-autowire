@@ -13,11 +13,13 @@ import (
 
 func InitZoo() example_zoo.Zoo {
 	cat := example_zoo.Cat{}
-	dog := example_zoo.Dog{}
+	dog := example_zoo.ProvideDog()
+	lion := example_zoo.NewLion()
 	bird := &example_zoo.Bird{}
 	zoo := example_zoo.Zoo{
 		Cat:       cat,
 		Dog:       dog,
+		Lion:      lion,
 		FlyAnimal: bird,
 	}
 	return zoo

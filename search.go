@@ -75,31 +75,37 @@ func (sc *searcher) searchWire(file string) (err error) {
 	}
 	var tmpDecls []tmpDecl
 	for _, decl := range f.Decls {
-		/*
-			todo : support
-			type (
-				// @autowire()
-				Itf1 struct {
+		if d, ok := decl.(*ast.GenDecl); ok {
+			if !(d.Tok.String() == "type") {
+				continue
+			}
+			if len(d.Specs) == 1 && strings.Contains(d.Doc.Text(), wireTag) {
+				id, ok := d.Specs[0].(*ast.TypeSpec)
+				if !ok {
+					continue
 				}
+				tmpDecls = append(tmpDecls, tmpDecl{
+					docs:     d.Doc.Text(),
+					name:     id.Name.Name,
+					isFunc:   false,
+					typeSpec: id,
+				})
+				continue
+			}
+			for _, sp := range d.Specs {
+				id, ok := sp.(*ast.TypeSpec)
+				if !(ok && strings.Contains(id.Doc.Text(), wireTag)) {
+					continue
+				}
+				tmpDecls = append(tmpDecls, tmpDecl{
+					docs:     id.Doc.Text(),
+					name:     id.Name.Name,
+					isFunc:   false,
+					typeSpec: id,
+				})
+				continue
 
-				// @autowire()
-				Itf2 struct {
-				}
-			)
-		*/
-		if d, ok := decl.(*ast.GenDecl); ok && strings.Contains(d.Doc.Text(), wireTag) {
-			if !(d.Tok.String() == "type" && len(d.Specs) == 1) {
-				continue
 			}
-			id, ok := d.Specs[0].(*ast.TypeSpec)
-			if !ok {
-				continue
-			}
-			tmpDecls = append(tmpDecls, tmpDecl{
-				docs:   d.Doc.Text(),
-				name:   id.Name.Name,
-				isFunc: false,
-			})
 		} else if f, ok := decl.(*ast.FuncDecl); ok && strings.Contains(f.Doc.Text(), wireTag) {
 			tmpDecls = append(tmpDecls, tmpDecl{
 				docs:   f.Doc.Text(),
@@ -108,10 +114,11 @@ func (sc *searcher) searchWire(file string) (err error) {
 			})
 		}
 	}
+	implementMap := getImplement(f)
 	for _, decl := range tmpDecls {
 		lines := strings.Split(decl.docs, "\n")
 		for _, c := range lines {
-			sc.analysisWireTag(c, decl.name, file, f, decl.isFunc)
+			sc.analysisWireTag(c, file, &decl, f, implementMap)
 		}
 	}
 	return
@@ -130,14 +137,18 @@ func (sc *searcher) getPkgPath(filePath string) (pkgPath string) {
 	return
 }
 
-func (sc *searcher) analysisWireTag(c, name, filePath string, f *ast.File, isFunc bool) {
-	pkgPath := sc.getPkgPath(filePath)
+func (sc *searcher) analysisWireTag(rawTag, filePath string, decl *tmpDecl, f *ast.File, implementMap map[string]string) {
+	var (
+		isFunc  = decl.isFunc
+		name    = decl.name
+		pkgPath = sc.getPkgPath(filePath)
+		tag     = strings.TrimSpace(rawTag)
+	)
 
-	c = strings.TrimSpace(c)
-	if !strings.HasPrefix(c, wireTag) {
+	if !strings.HasPrefix(tag, wireTag) {
 		return
 	}
-	tagStr := c[len(wireTag):]
+	tagStr := tag[len(wireTag):]
 	if !(strings.HasPrefix(tagStr, "(") && strings.HasSuffix(tagStr, ")")) {
 		return
 	}
@@ -161,7 +172,6 @@ func (sc *searcher) analysisWireTag(c, name, filePath string, f *ast.File, isFun
 	e := element{
 		name:        name,
 		constructor: "",
-		implements:  nil,
 		pkg:         f.Name.Name,
 		pkgPath:     pkgPath,
 	}
@@ -208,6 +218,62 @@ func (sc *searcher) analysisWireTag(c, name, filePath string, f *ast.File, isFun
 			e.implements = append(e.implements, key)
 		}
 	}
+	if len(implementMap[name]) > 0 {
+		insertIfUnExist(implementMap[name], &e.implements)
+	}
+}
+
+func getImplement(f *ast.File) (ret map[string]string) {
+	ret = make(map[string]string)
+	for _, d := range f.Decls {
+		gd, ok := d.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, sp := range gd.Specs {
+			vs, ok := sp.(*ast.ValueSpec)
+			if !ok || vs.Names[0].Name != "_" || vs.Type == nil || len(vs.Values) != 1 {
+				continue
+			}
+			var id *ast.Ident
+			switch t := vs.Values[0].(type) {
+			case *ast.CompositeLit:
+				id, ok = t.Type.(*ast.Ident)
+				if !ok {
+					continue
+				}
+			case *ast.UnaryExpr:
+				if t.Op != token.AND {
+					continue
+				}
+				cl, ok := t.X.(*ast.CompositeLit)
+				if !ok {
+					continue
+				}
+				id, ok = cl.Type.(*ast.Ident)
+				if !ok {
+					continue
+				}
+			default:
+				continue
+			}
+			imp, ok := vs.Type.(*ast.Ident)
+			if !ok {
+				continue
+			}
+			ret[id.Name] = imp.Name
+		}
+	}
+	return
+}
+
+func insertIfUnExist(i string, sl *[]string) {
+	for _, s := range *sl {
+		if s == i {
+			return
+		}
+	}
+	*sl = append(*sl, i)
 }
 
 func writeGen(sc *searcher) (err error) {

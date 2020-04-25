@@ -7,6 +7,6 @@ import (
 )
 
 var Sets = wire.NewSet(
-	ZooSet,
 	AnimalsSet,
+	ZooSet,
 )

@@ -129,14 +129,18 @@ func (sc *searcher) writeSet(set string, m map[string]element) (err error) {
 			SetName: setName,
 		}
 	)
+	pathPkg := sc.getPkgPath(fileName)
 	for _, key := range order {
 		// todo:support struct fields
 		// generate wire define
 		elem := m[key]
 		var wireItem []string
-		stName := elem.pkg + "." + elem.name
+		if elem.pkgPath == pathPkg {
+			elem.pkg = ""
+		}
+		stName := appendPkg(elem.pkg, elem.name)
 		if elem.constructor != "" {
-			wireItem = append(wireItem, elem.pkg+"."+elem.constructor)
+			wireItem = append(wireItem, appendPkg(elem.pkg, elem.constructor))
 		} else {
 			wireItem = append(wireItem, fmt.Sprintf(`wire.Struct(new(%s), "*")`, stName))
 		}
@@ -145,12 +149,15 @@ func (sc *searcher) writeSet(set string, m map[string]element) (err error) {
 			if strings.Contains(itf, ".") {
 				itfName = itf
 			} else {
-				itfName = elem.pkg + "." + itf
+				itfName = appendPkg(elem.pkg, itf)
 			}
 			wireItem = append(wireItem, fmt.Sprintf(`wire.Bind(new(%s), new(*%s))`, itfName, stName))
 		}
 		data.Items = append(data.Items, template.HTML(strings.Join(wireItem, ",\n\t")))
 
+		if len(elem.pkg) == 0 {
+			continue
+		}
 		// add import to set file
 		imp := &ast.ImportSpec{
 			Path: &ast.BasicLit{
@@ -197,4 +204,11 @@ func (sc *searcher) writeSet(set string, m map[string]element) (err error) {
 		return
 	}
 	return
+}
+
+func appendPkg(pkg string, sel string) string {
+	if len(pkg) == 0 {
+		return sel
+	}
+	return pkg + "." + sel
 }

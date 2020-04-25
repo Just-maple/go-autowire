@@ -1,6 +1,7 @@
 package gutowire
 
 import (
+	"go/ast"
 	"html/template"
 )
 
@@ -59,9 +60,10 @@ type (
 	}
 
 	tmpDecl struct {
-		docs   string
-		name   string
-		isFunc bool
+		docs     string
+		name     string
+		isFunc   bool
+		typeSpec *ast.TypeSpec
 	}
 )
 
