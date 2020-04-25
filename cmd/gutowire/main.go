@@ -9,7 +9,7 @@ const command = "gutowire"
 
 var Command = &cobra.Command{
 	Use:   command,
-	Short: "db2struct读取数据的表生成结构体",
+	Short: "gen your wire files effective and simply",
 	Run:   run,
 }
 var (
