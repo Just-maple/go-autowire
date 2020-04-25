@@ -76,18 +76,18 @@ as your zoo goes bigger and bigger
 
 life seems goes hard
 
-but
+### but now
 
 you can waist your time to continue manage this shit wire sets or 
 
 use `gutowire`
 
-write annotate as below
+write annotate as `below`
 ```go
 package example
 
 // it will be collect into zooSet (this comment is not necessary)
-//autowire(set=zoo)
+// @autowire(set=zoo)
 type Zoo struct{ 
     Cat         Cat
     Dog         Dog
@@ -95,7 +95,7 @@ type Zoo struct{
 }
 
 // it will be collect into animalsSet (this comment is not necessary)
-//autowire(set=animals)
+// @autowire(set=animals)
 type Cat struct{
 }
 
@@ -105,7 +105,7 @@ type FlyAnimal interface{
 }
 
 // it will be collect into animalsSet and wire as interface FlyAnimal (this comment is not necessary)
-//autowire(set=animals,FlyAnimal)
+// @autowire(set=animals,FlyAnimal)
 type Bird struct{
 }
 
@@ -113,7 +113,7 @@ func (b Bird)Fly(){
 }
 
 // it will be collect into animalsSet (this comment is not necessary)
-//autowire(set=animals)
+// @autowire(set=animals)
 type Dog struct{
 }
 ```
