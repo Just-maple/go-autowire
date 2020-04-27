@@ -17,14 +17,16 @@ import (
 )
 
 const (
-	testTemplate = `package %s
+	initTemplate = `// +build wireinject
+
+package %s
 
 func Initialize%s() (%s, func(), error) {
 	panic(wire.Build(Sets))
 }
 `
 
-	genTemplate = `
+	thisIsYourTemplate = `
 func thisIsYour%s(res *%s) (err error, cleanup func()) {
 	*res, cleanup, err = Initialize%s()
 	return
@@ -56,24 +58,26 @@ func IWantA(in interface{}, scope ...string) interface{} {
 		}
 	}
 	fset := token.NewFileSet()
-	f2, err := parser.ParseFile(fset, "", callFileData, parser.ParseComments)
+	astCallFile, err := parser.ParseFile(fset, "", callFileData, parser.ParseComments)
 	if err != nil {
 		panic(err)
 	}
 	// gen wire.go
-	var s string
-	genPackage := f2.Name.Name
-	tp := reflect.TypeOf(in).Elem()
+	var wantVar string
+	genPackage := astCallFile.Name.Name
+	rType := reflect.TypeOf(in).Elem()
 	base, _ := getModBase()
 	gopkg := getPkgPath(f, base)
-	if tp.PkgPath() == gopkg {
-		s = tp.Name()
+	if rType.PkgPath() == gopkg {
+		wantVar = rType.Name()
 	} else {
-		s = tp.String()
+		wantVar = rType.String()
 	}
-	spl := strings.Split(s, ".")
+	spl := strings.Split(wantVar, ".")
 	name := spl[len(spl)-1]
 	genPath := filepath.Dir(f)
+
+	// clean tmp
 	defer func() {
 		cleanIWantATemp(f)
 		err := recover()
@@ -83,18 +87,21 @@ func IWantA(in interface{}, scope ...string) interface{} {
 			os.Exit(0)
 		}
 	}()
-	src := []byte(fmt.Sprintf(testTemplate, genPackage, name, s))
+
+	src := []byte(fmt.Sprintf(initTemplate, genPackage, name, wantVar))
 	res, err := imports.Process("", src, nil)
 	if err != nil {
 		fmt.Print(src)
 		panic(err)
 	}
-	res = append([]byte("// +build wireinject\n\n"), res...)
 	_ = ioutil.WriteFile(filepath.Join(genPath, "wire_init_tmp.go"), res, 0664)
-	// 生成wire
+
+	// run autowire
 	RunWire(genPath, WithSearchPath(scope[0]), WithPkg(genPackage))
+
+	// gen init
 	wiregenData, _ := ioutil.ReadFile(filepath.Join(genPath, "wire_gen.go"))
-	wiregenData = append(wiregenData, fmt.Sprintf(genTemplate, name, s, name)...)
+	wiregenData = append(wiregenData, fmt.Sprintf(thisIsYourTemplate, name, wantVar, name)...)
 	genfile := filepath.Join(filepath.Dir(f), fmt.Sprintf("init_%s_test.go", strcase.ToSnake(name)))
 	wiregenData, err = imports.Process("", wiregenData, nil)
 	if err != nil {
@@ -105,6 +112,8 @@ func IWantA(in interface{}, scope ...string) interface{} {
 	if err != nil {
 		panic(err)
 	}
+
+	// rewrite caller replace IWantA with thisIsYour
 	if input == "" {
 		input = "nil"
 	} else {
