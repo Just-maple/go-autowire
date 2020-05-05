@@ -15,7 +15,10 @@ import (
 	"github.com/iancoleman/strcase"
 )
 
-func SearchAllPath(file string, genPath string, pkg string, opts ...Option) (err error) {
+func SearchAllPath(genPath string, opts ...Option) (err error) {
+	o := newGenOpt(genPath, opts...)
+	file := o.searchPath
+	pkg := o.pkg
 	sc, ok := searcherStore[file]
 	if ok {
 		sc.genPath = genPath
@@ -30,9 +33,9 @@ func SearchAllPath(file string, genPath string, pkg string, opts ...Option) (err
 	sc = &searcher{
 		genPath:    genPath,
 		pkg:        pkg,
-		options:    opts,
 		elementMap: make(map[string]map[string]element),
 		modBase:    modBaser,
+		initWire:   o.initWire,
 	}
 	err = sc.SearchAllPath(file)
 	if err != nil {
@@ -139,7 +142,16 @@ func (sc *searcher) analysisWireTag(rawTag, filePath string, decl *tmpDecl, f *a
 	if !strings.HasPrefix(tag, wireTag) {
 		return
 	}
+	var itemFunc string
 	tagStr := tag[len(wireTag):]
+	if tagStr[0] == '.' {
+		idx := strings.IndexRune(tagStr, '(')
+		if idx == -1 {
+			return
+		}
+		itemFunc = tagStr[1:idx]
+		tagStr = tagStr[idx:]
+	}
 	if !(strings.HasPrefix(tagStr, "(") && strings.HasSuffix(tagStr, ")")) {
 		return
 	}
@@ -208,6 +220,11 @@ func (sc *searcher) analysisWireTag(rawTag, filePath string, decl *tmpDecl, f *a
 		default:
 			e.implements = append(e.implements, key)
 		}
+	}
+
+	switch itemFunc {
+	case "init":
+		e.initWire = true
 	}
 	if len(implementMap[name]) > 0 {
 		insertIfUnExist(implementMap[name], &e.implements)

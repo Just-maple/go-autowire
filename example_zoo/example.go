@@ -2,7 +2,8 @@ package example_zoo
 
 type (
 	// it will be collect into zooSet
-	// @autowire(set=zoo)
+	// use init to create initZoo method in wire.gen.go
+	// @autowire.init(set=zoo)
 	Zoo struct {
 		Cat       Cat
 		Dog       Dog

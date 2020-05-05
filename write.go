@@ -57,8 +57,9 @@ func (sc *searcher) writeSets() (err error) {
 	}
 	sort.Strings(sc.sets)
 	var (
-		fileName = filepath.Join(sc.genPath, filePrefix+"_sets.go")
-		data     = wireSet{
+		fileName   = filepath.Join(sc.genPath, filePrefix+"_sets.go")
+		wgFileName = filepath.Join(sc.genPath, "wire.gen.go")
+		data       = wireSet{
 			Package: sc.pkg,
 			SetName: "Sets",
 			Items:   []template.HTML{template.HTML(strings.Join(sc.sets, ",\n\t"))},
@@ -75,6 +76,20 @@ func (sc *searcher) writeSets() (err error) {
 		return err
 	}
 	err = ioutil.WriteFile(fileName, src, 0664)
+	if err != nil || len(sc.initElements) == 0 || !sc.initWire {
+		return
+	}
+	inits := []string{fmt.Sprintf(initTemplateHead, sc.pkg)}
+	for _, w := range sc.initElements {
+		inits = append(inits, fmt.Sprintf(initItemTemplate, w.name, appendPkg(w.pkg, w.name)))
+	}
+	wireGenData := strings.Join(inits, "\n")
+	src, err = imports.Process("", []byte(wireGenData), nil)
+	if err != nil {
+		log.Printf("write set error:\n%s", wireGenData)
+		return err
+	}
+	err = ioutil.WriteFile(wgFileName, src, 0664)
 	return
 }
 
@@ -154,6 +169,10 @@ func (sc *searcher) writeSet(set string, m map[string]element) (err error) {
 			wireItem = append(wireItem, fmt.Sprintf(`wire.Bind(new(%s), new(*%s))`, itfName, stName))
 		}
 		data.Items = append(data.Items, template.HTML(strings.Join(wireItem, ",\n\t")))
+
+		if elem.initWire {
+			sc.initElements = append(sc.initElements, elem)
+		}
 
 		if len(elem.pkg) == 0 {
 			continue

@@ -42,10 +42,7 @@ func (o *opt) fix() {
 }
 
 func RunWire(genPath string, opts ...Option) {
-	o := newGenOpt(genPath, opts...)
-	file := o.searchPath
-	pkg := o.pkg
-	err := SearchAllPath(file, genPath, pkg, opts...)
+	err := SearchAllPath(genPath, opts...)
 	if err != nil {
 		panic(err)
 	}
