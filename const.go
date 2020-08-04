@@ -28,7 +28,7 @@ var {{ .SetName }} = wire.NewSet({{ range $Item := .Items}}
 package %s
 `
 	initItemTemplate = `
-func Initialize%s() (%s, func(), error) {
+func Initialize%s() (*%s, func(), error) {
 	panic(wire.Build(Sets))
 }
 `
