@@ -103,7 +103,8 @@ func IWantA(in interface{}, scope ...string) interface{} {
 	wiregenData, _ := ioutil.ReadFile(filepath.Join(genPath, "wire_gen.go"))
 	wiregenData = append(wiregenData, fmt.Sprintf(thisIsYourTemplate, name, wantVar, name)...)
 	genfile := filepath.Join(filepath.Dir(f), fmt.Sprintf("init_%s_test.go", strcase.ToSnake(name)))
-	wiregenData, err = imports.Process("", wiregenData, nil)
+	src = wiregenData
+	wiregenData, err = imports.Process("", src, nil)
 	if err != nil {
 		fmt.Printf("%s",src)
 		panic(err)
@@ -122,7 +123,8 @@ func IWantA(in interface{}, scope ...string) interface{} {
 	spln[l-1] = "// " + strings.TrimSpace(spln[l-1])
 	d := fmt.Sprintf("var _, _ = thisIsYour%s(%s)", name, input)
 	spln = append(spln[:l], append([]string{d}, spln[l:]...)...)
-	res, err = imports.Process("", []byte(strings.Join(spln, "\n")), nil)
+	src = []byte(strings.Join(spln, "\n"))
+	res, err = imports.Process("",src , nil)
 	if err != nil {
 		fmt.Printf("%s",src)
 		panic(err)
