@@ -91,7 +91,7 @@ func IWantA(in interface{}, scope ...string) interface{} {
 	src := []byte(fmt.Sprintf(initTemplate, genPackage, name, wantVar))
 	res, err := imports.Process("", src, nil)
 	if err != nil {
-		fmt.Printf("%s",src)
+		fmt.Printf("%s", src)
 		panic(err)
 	}
 	_ = ioutil.WriteFile(filepath.Join(genPath, "wire_init_tmp.go"), res, 0664)
@@ -102,11 +102,11 @@ func IWantA(in interface{}, scope ...string) interface{} {
 	// gen init
 	wiregenData, _ := ioutil.ReadFile(filepath.Join(genPath, "wire_gen.go"))
 	wiregenData = append(wiregenData, fmt.Sprintf(thisIsYourTemplate, name, wantVar, name)...)
-	genfile := filepath.Join(filepath.Dir(f), fmt.Sprintf("init_%s_test.go", strcase.ToSnake(name)))
+	genfile := filepath.Join(filepath.Dir(f), fmt.Sprintf("%s_init_test.go", strcase.ToSnake(name)))
 	src = wiregenData
 	wiregenData, err = imports.Process("", src, nil)
 	if err != nil {
-		fmt.Printf("%s",src)
+		fmt.Printf("%s", src)
 		panic(err)
 	}
 	err = ioutil.WriteFile(genfile, wiregenData, 0664)
@@ -120,13 +120,21 @@ func IWantA(in interface{}, scope ...string) interface{} {
 	} else {
 		input = "&" + input
 	}
-	spln[l-1] = "// " + strings.TrimSpace(spln[l-1])
-	d := fmt.Sprintf("var _, _ = thisIsYour%s(%s)", name, input)
+
+	callLine := strings.TrimSpace(spln[l-1])
+
+	d := fmt.Sprintf("_, _ = thisIsYour%s(%s)", name, input)
+	if strings.HasPrefix(callLine, "var ") {
+		d = "var " + d
+	}
+
+	spln[l-1] = "// " + callLine
+
 	spln = append(spln[:l], append([]string{d}, spln[l:]...)...)
 	src = []byte(strings.Join(spln, "\n"))
-	res, err = imports.Process("",src , nil)
+	res, err = imports.Process("", src, nil)
 	if err != nil {
-		fmt.Printf("%s",src)
+		fmt.Printf("%s", src)
 		panic(err)
 	}
 	err = ioutil.WriteFile(f, res, 0664)
