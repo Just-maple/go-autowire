@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 )
 
 func init() {
@@ -28,7 +30,7 @@ func (o *opt) fix() {
 		var err error
 		o.pkg, err = getPathGoPkgName(o.genPath)
 		if err != nil {
-			o.pkg = filePrefix
+			o.pkg = strings.ReplaceAll(filepath.Base(o.genPath), "-", "_")
 		}
 	}
 	if len(o.searchPath) == 0 {

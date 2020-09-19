@@ -38,6 +38,7 @@ var regexpCall = regexp.MustCompile(`gutowire\.IWantA\(&([a-zA-Z]+).*?\)`)
 type iwantA struct {
 	wantInputIdent string
 	wantName       string
+	typeName       string
 	callFileLines  []string
 	callLine       int
 	callFile       string
@@ -109,11 +110,12 @@ func IWantA(in interface{}, searchDepDirs ...string) (_ struct{}) {
 	}
 
 	var (
-		spl          = strings.Split(wantTypeVar, ".")
-		wantTypeName = spl[len(spl)-1]
+		wantTypeName = strcase.ToSnake(strings.Replace(strings.Replace(wantTypeVar, "_", "", -1), ".", "_", -1))
 		genPath      = filepath.Dir(callFile)
 		wireOpt      = []Option{WithPkg(genPackage)}
 	)
+
+	iw.typeName = strcase.ToCamel(wantTypeName)
 
 	// clean tmp
 	defer func() {
@@ -126,7 +128,7 @@ func IWantA(in interface{}, searchDepDirs ...string) (_ struct{}) {
 	}()
 
 	initTmpFileName := filepath.Join(genPath, "wire_init_tmp.go")
-	if err = importAndWrite(initTmpFileName, []byte(fmt.Sprintf(initTemplate, genPackage, wantTypeName, wantTypeVar))); err != nil {
+	if err = importAndWrite(initTmpFileName, []byte(fmt.Sprintf(initTemplate, genPackage, iw.typeName, wantTypeVar))); err != nil {
 		panic(err)
 	}
 
@@ -144,18 +146,16 @@ func IWantA(in interface{}, searchDepDirs ...string) (_ struct{}) {
 		panic(err)
 	}
 
-	if err = iw.updateCallFile(wantTypeName); err != nil {
+	if err = iw.updateCallFile(); err != nil {
 		panic(err)
 	}
 
 	return struct{}{}
 }
 
-func (iw *iwantA) updateCallFile(name string) (err error) {
-	var (
-		callLine  = strings.TrimSpace(iw.callFileLines[iw.callLine-1])
-		assignStr = fmt.Sprintf("_, _ = thisIsYour%s(%s)", name, iw.wantInputIdent)
-	)
+func (iw *iwantA) updateCallFile() (err error) {
+	callLine := strings.TrimSpace(iw.callFileLines[iw.callLine-1])
+	assignStr := fmt.Sprintf("_, _ = thisIsYour%s(%s)", iw.typeName, iw.wantInputIdent)
 
 	if strings.HasPrefix(callLine, "var ") {
 		assignStr = "var " + assignStr
@@ -167,15 +167,19 @@ func (iw *iwantA) updateCallFile(name string) (err error) {
 }
 
 func (iw *iwantA) writeInitFile(wantVar, name string) (err error) {
-	var (
-		initFileData []byte
-		genPath      = filepath.Dir(iw.callFile)
-	)
-	if initFileData, err = ioutil.ReadFile(filepath.Join(genPath, "wire_gen.go")); err != nil {
+	genPath := filepath.Dir(iw.callFile)
+	initFileData, err := ioutil.ReadFile(filepath.Join(genPath, "wire_gen.go"))
+	isTest := strings.HasSuffix(iw.callFile, "_test.go")
+	if err != nil {
 		return
 	}
-	initFileData = append(initFileData, fmt.Sprintf(thisIsYourTemplate, name, wantVar, name)...)
-	initFileName := filepath.Join(genPath, fmt.Sprintf("%s_init_test.go", strcase.ToSnake(name)))
+	filename := fmt.Sprintf("%s_init", strcase.ToSnake(name))
+	if isTest {
+		filename += "_test"
+	}
+	filename += ".go"
+	initFileData = append(initFileData, fmt.Sprintf(thisIsYourTemplate, iw.typeName, wantVar, iw.typeName)...)
+	initFileName := filepath.Join(genPath, filename)
 	if err = importAndWrite(initFileName, initFileData); err != nil {
 		return
 	}
