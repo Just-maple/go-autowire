@@ -12,6 +12,7 @@ var Command = &cobra.Command{
 	Short: "gen your wire files effective and simply",
 	Run:   run,
 }
+
 var (
 	filepath string
 	scope    string
@@ -31,15 +32,18 @@ func main() {
 
 }
 
-func run(_ *cobra.Command, _ []string) {
+func run(_ *cobra.Command, args []string) {
 	if len(pkg) > 0 {
 		opt = append(opt, gutowire.WithPkg(pkg))
 	}
 	if len(scope) > 0 {
 		opt = append(opt, gutowire.WithSearchPath(scope))
 	}
+	if len(filepath) == 0 && len(args) > 0 {
+		filepath = args[0]
+	}
 	if len(filepath) == 0 {
-		panic("arg -w is required for your wire file path")
+		panic("arg required for your wire file path")
 	}
 	opt = append(opt, gutowire.InitWire())
 
