@@ -116,8 +116,8 @@ func (sc *searcher) searchWire(file string) (err error) {
 			}
 		case *ast.FuncDecl:
 			tmpDecls = append(tmpDecls, tmpDecl{
-				docs:   f.Doc.Text(),
-				name:   f.Name.Name,
+				docs:   d.Doc.Text(),
+				name:   d.Name.Name,
 				isFunc: true,
 			})
 		}
