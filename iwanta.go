@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/iancoleman/strcase"
-	"golang.org/x/tools/imports"
 )
 
 const (
@@ -180,17 +179,6 @@ func (iw *iwantA) writeInitFile(wantVar, name string) (err error) {
 	if err = importAndWrite(initFileName, initFileData); err != nil {
 		return
 	}
-	return
-}
-
-func importAndWrite(filename string, src []byte) (err error) {
-	var writeData []byte
-	if writeData, err = imports.Process("", src, nil); err != nil {
-		fmt.Printf("%s", src)
-		return
-	}
-
-	err = ioutil.WriteFile(filename, writeData, os.FileMode(0664))
 	return
 }
 

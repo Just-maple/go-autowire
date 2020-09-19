@@ -7,7 +7,6 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
-	"html/template"
 	"io/ioutil"
 	"log"
 	"os"
@@ -17,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/iancoleman/strcase"
-	"golang.org/x/tools/imports"
 )
 
 func (sc *searcher) clean() (err error) {
@@ -55,58 +53,55 @@ func (sc *searcher) writeSets() (err error) {
 	if len(sc.sets) == 0 {
 		return
 	}
+
 	sort.Strings(sc.sets)
+
 	var (
-		fileName   = filepath.Join(sc.genPath, filePrefix+"_sets.go")
-		wgFileName = filepath.Join(sc.genPath, "wire.gen.go")
-		data       = wireSet{
+		fileName        = filepath.Join(sc.genPath, filePrefix+"_sets.go")
+		wiregenFileName = filepath.Join(sc.genPath, "wire.gen.go")
+		bf              = bytes.NewBuffer(nil)
+
+		set = wireSet{
 			Package: sc.pkg,
 			SetName: "Sets",
-			Items:   []template.HTML{template.HTML(strings.Join(sc.sets, ",\n\t"))},
+			Items:   []string{strings.Join(sc.sets, ",\n\t")},
 		}
-		bf = bytes.NewBuffer(nil)
 	)
-	err = setTemp.Execute(bf, &data)
-	if err != nil {
+
+	if err = setTemp.Execute(bf, &set); err != nil {
 		return
 	}
-	src, err := imports.Process("", bf.Bytes(), nil)
-	if err != nil {
-		log.Printf("write set error:\n%s", bf.String())
-		return err
-	}
-	err = ioutil.WriteFile(fileName, src, 0664)
-	if err != nil || len(sc.initElements) == 0 || !sc.initWire {
+
+	if err = importAndWrite(fileName, bf.Bytes()); err != nil || len(sc.initElements) == 0 || !sc.initWire {
 		return
 	}
+
 	inits := []string{fmt.Sprintf(initTemplateHead, sc.pkg)}
 	for _, w := range sc.initElements {
 		inits = append(inits, fmt.Sprintf(initItemTemplate, w.name, appendPkg(w.pkg, w.name)))
 	}
+
 	wireGenData := strings.Join(inits, "\n")
-	src, err = imports.Process("", []byte(wireGenData), nil)
-	if err != nil {
-		log.Printf("write set error:\n%s", wireGenData)
-		return err
-	}
-	err = ioutil.WriteFile(wgFileName, src, 0664)
+	err = importAndWrite(wiregenFileName, []byte(wireGenData))
 	return
 }
 
 func (sc *searcher) writeSet(set string, m map[string]element) (err error) {
 	var (
-		order = make([]string, 0, len(m))
-
+		order  = make([]string, 0, len(m))
 		pkgMap = make(map[string]map[string]string)
 
 		setName  = strings.Title(strcase.ToCamel(set)) + "Set"
 		fileName = filepath.Join(sc.genPath, filePrefix+"_"+strcase.ToSnake(set)+".go")
 		fs       = token.NewFileSet()
 	)
+
 	log.Printf("generating [ %s ]", fileName)
+
 	for key := range m {
 		order = append(order, key)
 	}
+
 	sort.Strings(order)
 	// fix import name
 	// support duplicate package name as
@@ -136,29 +131,39 @@ func (sc *searcher) writeSet(set string, m map[string]element) (err error) {
 		t.pkg = newPkg
 		m[key] = t
 	}
+
 	var (
 		importPkgs []*ast.ImportSpec
-		src        = bytes.NewBuffer(nil)
-		data       = wireSet{
+
+		src     = bytes.NewBuffer(nil)
+		pathPkg = sc.getPkgPath(fileName)
+
+		data = wireSet{
 			Package: sc.pkg,
 			SetName: setName,
 		}
 	)
-	pathPkg := sc.getPkgPath(fileName)
+
 	for _, key := range order {
 		// todo:support struct fields
 		// generate wire define
-		elem := m[key]
-		var wireItem []string
+		var (
+			wireItem []string
+			elem     = m[key]
+		)
+
 		if elem.pkgPath == pathPkg {
 			elem.pkg = ""
 		}
+
 		stName := appendPkg(elem.pkg, elem.name)
+
 		if elem.constructor != "" {
 			wireItem = append(wireItem, appendPkg(elem.pkg, elem.constructor))
 		} else {
 			wireItem = append(wireItem, fmt.Sprintf(`wire.Struct(new(%s), "*")`, stName))
 		}
+
 		for _, itf := range elem.implements {
 			var itfName string
 			if strings.Contains(itf, ".") {
@@ -168,7 +173,7 @@ func (sc *searcher) writeSet(set string, m map[string]element) (err error) {
 			}
 			wireItem = append(wireItem, fmt.Sprintf(`wire.Bind(new(%s), new(*%s))`, itfName, stName))
 		}
-		data.Items = append(data.Items, template.HTML(strings.Join(wireItem, ",\n\t")))
+		data.Items = append(data.Items, strings.Join(wireItem, ",\n\t"))
 
 		if elem.initWire {
 			sc.initElements = append(sc.initElements, elem)
@@ -192,8 +197,8 @@ func (sc *searcher) writeSet(set string, m map[string]element) (err error) {
 	}
 
 	sc.sets = append(sc.sets, setName)
-	err = setTemp.Execute(src, data)
-	if err != nil {
+
+	if err = setTemp.Execute(src, data); err != nil {
 		return
 	}
 
@@ -207,22 +212,13 @@ func (sc *searcher) writeSet(set string, m map[string]element) (err error) {
 			decl.Specs = append(decl.Specs, imp)
 		}
 	}
-	var bf bytes.Buffer
-	err = format.Node(&bf, fs, f)
-	if err != nil {
+
+	setDataBuf := &bytes.Buffer{}
+	if err = format.Node(setDataBuf, fs, f); err != nil {
 		return
 	}
 	// finished imports
-	ret, err := imports.Process("", bf.Bytes(), nil)
-	if err != nil {
-		log.Printf("write set error:\n%s", bf.String())
-		return
-	}
-	err = ioutil.WriteFile(fileName, ret, 0664)
-	if err != nil {
-		return
-	}
-	return
+	return importAndWrite(fileName, setDataBuf.Bytes())
 }
 
 func appendPkg(pkg string, sel string) string {

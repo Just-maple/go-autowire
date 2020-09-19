@@ -2,7 +2,7 @@ package gutowire
 
 import (
 	"go/ast"
-	"html/template"
+	"text/template"
 )
 
 const (
@@ -39,7 +39,7 @@ var setTemp = template.Must(template.New("").Parse(setTemplate))
 type (
 	wireSet struct {
 		Package string
-		Items   []template.HTML
+		Items   []string
 		SetName string
 	}
 

@@ -3,14 +3,17 @@ package gutowire
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"go/parser"
 	"go/token"
 	"io/ioutil"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"golang.org/x/mod/modfile"
+	"golang.org/x/tools/imports"
 )
 
 var modTmp string
@@ -95,4 +98,15 @@ func getPkgPath(filePath, modBase string) (pkgPath string) {
 
 func getGoPkgNameByDir(pathStr string) (pkg string) {
 	return filepath.Base(pathStr)
+}
+
+func importAndWrite(filename string, src []byte) (err error) {
+	var writeData []byte
+	if writeData, err = imports.Process("", src, nil); err != nil {
+		fmt.Printf("%s", src)
+		return
+	}
+
+	err = ioutil.WriteFile(filename, writeData, os.FileMode(0664))
+	return
 }
