@@ -2,6 +2,7 @@ package gutowire
 
 import (
 	"bytes"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -69,9 +70,20 @@ func (sc *searcher) searchWire(file string) (err error) {
 	if err != nil {
 		return
 	}
+
+	genPkgPath := fmt.Sprintf(`"%s"`, sc.getPkgPath(filepath.Join(sc.genPath, "...")))
+	// to avoid import cycle
+	for _, imp := range f.Imports {
+		if imp.Path.Value == genPkgPath {
+			log.Printf("[warn] pacakge %s from [ %s ] ignore to avoid import cycle", f.Name.Name, file)
+			return
+		}
+	}
+
 	var tmpDecls []tmpDecl
 	for _, decl := range f.Decls {
-		if d, ok := decl.(*ast.GenDecl); ok {
+		switch d := decl.(type) {
+		case *ast.GenDecl:
 			if !(d.Tok.String() == "type") {
 				continue
 			}
@@ -102,7 +114,7 @@ func (sc *searcher) searchWire(file string) (err error) {
 				continue
 
 			}
-		} else if f, ok := decl.(*ast.FuncDecl); ok && strings.Contains(f.Doc.Text(), wireTag) {
+		case *ast.FuncDecl:
 			tmpDecls = append(tmpDecls, tmpDecl{
 				docs:   f.Doc.Text(),
 				name:   f.Name.Name,
@@ -114,7 +126,7 @@ func (sc *searcher) searchWire(file string) (err error) {
 	for _, decl := range tmpDecls {
 		lines := strings.Split(decl.docs, "\n")
 		for _, c := range lines {
-			sc.analysisWireTag(c, file, &decl, f, implementMap)
+			sc.analysisWireTag(strings.TrimSpace(c), file, &decl, f, implementMap)
 		}
 	}
 	return
@@ -124,19 +136,20 @@ func (sc *searcher) getPkgPath(filePath string) (pkgPath string) {
 	return getPkgPath(filePath, sc.modBase)
 }
 
-func (sc *searcher) analysisWireTag(rawTag, filePath string, decl *tmpDecl, f *ast.File, implementMap map[string]string) {
-	var (
-		isFunc  = decl.isFunc
-		name    = decl.name
-		pkgPath = sc.getPkgPath(filePath)
-		tag     = strings.TrimSpace(rawTag)
-	)
-
+func (sc *searcher) analysisWireTag(tag, filePath string, decl *tmpDecl, f *ast.File, implementMap map[string]string) {
 	if !strings.HasPrefix(tag, wireTag) {
 		return
 	}
-	var itemFunc string
-	tagStr := tag[len(wireTag):]
+
+	var (
+		itemFunc string
+
+		isFunc  = decl.isFunc
+		name    = decl.name
+		pkgPath = sc.getPkgPath(filePath)
+		tagStr  = tag[len(wireTag):]
+	)
+
 	if tagStr[0] == '.' {
 		idx := strings.IndexRune(tagStr, '(')
 		if idx == -1 {
@@ -145,9 +158,11 @@ func (sc *searcher) analysisWireTag(rawTag, filePath string, decl *tmpDecl, f *a
 		itemFunc = tagStr[1:idx]
 		tagStr = tagStr[idx:]
 	}
+
 	if !(strings.HasPrefix(tagStr, "(") && strings.HasSuffix(tagStr, ")")) {
 		return
 	}
+
 	options := map[string]string{}
 	// todo:support more
 	// @autowire(interface,interface,set=setName,field=*)

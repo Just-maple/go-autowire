@@ -8,8 +8,10 @@ import (
 
 var zoo example_zoo.Zoo
 var testI dependencies.Test
+var local Local
 
 // run go test ./example_iwanta/...
 // then it will generate the init file
+var _ = gutowire.IWantA(&local)
 var _ = gutowire.IWantA(&testI)
 var _ = gutowire.IWantA(&zoo)
