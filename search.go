@@ -19,29 +19,22 @@ func SearchAllPath(genPath string, opts ...Option) (err error) {
 	o := newGenOpt(genPath, opts...)
 	file := o.searchPath
 	pkg := o.pkg
-	sc, ok := searcherStore[file]
-	if ok {
-		sc.genPath = genPath
-		sc.pkg = pkg
-		return writeGen(sc)
-	}
-	modBaser, err := getModBase()
+	modBase, err := getModBase()
 	if err != nil {
 		return
 	}
 	pkg = strings.Replace(pkg, "-", "_", -1)
-	sc = &searcher{
+	sc := &searcher{
 		genPath:    genPath,
 		pkg:        pkg,
 		elementMap: make(map[string]map[string]element),
-		modBase:    modBaser,
+		modBase:    modBase,
 		initWire:   o.initWire,
 	}
 	err = sc.SearchAllPath(file)
 	if err != nil {
 		return
 	}
-	searcherStore[file] = sc
 	log.Printf("analysis autowire complete")
 	return writeGen(sc)
 }

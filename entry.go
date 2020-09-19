@@ -14,8 +14,6 @@ func init() {
 	log.SetOutput(os.Stdout)
 }
 
-var searcherStore = make(map[string]*searcher)
-
 func newGenOpt(genPath string, opts ...Option) *opt {
 	o := &opt{genPath: genPath}
 	for _, opt := range opts {
@@ -41,17 +39,16 @@ func (o *opt) fix() {
 	}
 }
 
-func RunWire(genPath string, opts ...Option) {
-	err := SearchAllPath(genPath, opts...)
-	if err != nil {
-		panic(err)
+func RunWire(genPath string, opts ...Option) (err error) {
+	if err = SearchAllPath(genPath, opts...); err != nil {
+		return
 	}
 	log.Printf("write wire files success")
 	log.Printf("start runnning wire")
 	p, e := exec.LookPath("wire")
 	if e != nil {
-		panic(fmt.Errorf("wire not found: %v \n%s\n", e,
-			"please install wire by [ go get github.com/google/wire/cmd/wire ]"))
+		err = fmt.Errorf("wire not found: %v \n%s\n", e,
+			"please install wire by [ go get github.com/google/wire/cmd/wire ]")
 	}
 	cmd := exec.Command(p)
 	var s bytes.Buffer
@@ -60,7 +57,8 @@ func RunWire(genPath string, opts ...Option) {
 	err = cmd.Run()
 	if err != nil {
 		log.Printf("[gen failed] %s", s.String())
-		panic(err)
+		return
 	}
 	log.Printf("[gen success] %s", s.String())
+	return
 }

@@ -42,5 +42,8 @@ func run(_ *cobra.Command, _ []string) {
 		panic("arg -w is required for your wire file path")
 	}
 	opt = append(opt, gutowire.InitWire())
-	gutowire.RunWire(filepath, opt...)
+
+	if err := gutowire.RunWire(filepath, opt...); err != nil {
+		panic(err)
+	}
 }

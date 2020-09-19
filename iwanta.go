@@ -36,115 +36,165 @@ func thisIsYour%s(res *%s) (err error, cleanup func()) {
 
 var regexpCall = regexp.MustCompile(`gutowire\.IWantA\(&([a-zA-Z]+).*?\)`)
 
-func IWantA(in interface{}, scope ...string) interface{} {
-	if len(scope) == 0 {
-		modPath := getGoModDir()
-		if len(modPath) > 0 {
-			scope = append(scope, modPath)
-		}
-	}
-	_, f, l, ok := runtime.Caller(1)
-	if !ok {
-		panic("error call path")
-	}
-	callFileData, _ := ioutil.ReadFile(f)
-	spln := strings.Split(string(callFileData), "\n")
-	found := regexpCall.FindAllStringSubmatch(strings.TrimSpace(spln[l-1]), -1)
-	var input string
-	for i := range found {
-		if len(found[i]) == 2 {
-			input = found[i][1]
+type iwantA struct {
+	wantInputIdent string
+	wantName       string
+	callFileLines  []string
+	callLine       int
+	callFile       string
+}
+
+func (iw *iwantA) initWantArgIdent() {
+	callLineStr := regexpCall.FindAllStringSubmatch(strings.TrimSpace(iw.callFileLines[iw.callLine-1]), -1)
+	for i := range callLineStr {
+		if len(callLineStr[i]) == 2 {
+			iw.wantInputIdent = callLineStr[i][1]
 			break
 		}
 	}
-	fset := token.NewFileSet()
-	astCallFile, err := parser.ParseFile(fset, "", callFileData, parser.ParseComments)
+
+	// rewrite caller replace IWantA with thisIsYour
+	if iw.wantInputIdent == "" {
+		iw.wantInputIdent = "nil"
+	} else {
+		iw.wantInputIdent = "&" + iw.wantInputIdent
+	}
+
+}
+
+func IWantA(in interface{}, searchDepDirs ...string) (_ struct{}) {
+	if len(searchDepDirs) == 0 {
+		modPath := getGoModDir()
+		if len(modPath) > 0 {
+			searchDepDirs = append(searchDepDirs, modPath)
+		}
+	}
+
+	_, callFile, callLine, ok := runtime.Caller(1)
+	if !ok {
+		panic("error call path")
+	}
+
+	var (
+		callFileData, _  = ioutil.ReadFile(callFile)
+		fileSet          = token.NewFileSet()
+		astCallFile, err = parser.ParseFile(fileSet, "", callFileData, parser.ParseComments)
+
+		iw = &iwantA{
+			callFile:      callFile,
+			callLine:      callLine,
+			callFileLines: strings.Split(string(callFileData), "\n"),
+		}
+	)
+
+	iw.initWantArgIdent()
+
 	if err != nil {
 		panic(err)
 	}
+
 	// gen wire.go
-	var wantVar string
-	genPackage := astCallFile.Name.Name
-	rType := reflect.TypeOf(in).Elem()
-	base, _ := getModBase()
-	gopkg := getPkgPath(f, base)
-	if rType.PkgPath() == gopkg {
-		wantVar = rType.Name()
+	var (
+		wantTypeVar string
+
+		genPackage    = astCallFile.Name.Name
+		rType         = reflect.TypeOf(in).Elem()
+		modeBase, _   = getModBase()
+		iwantaPkgPath = getPkgPath(callFile, modeBase)
+	)
+
+	if rType.PkgPath() == iwantaPkgPath {
+		wantTypeVar = rType.Name()
 	} else {
-		wantVar = rType.String()
+		wantTypeVar = rType.String()
 	}
-	spl := strings.Split(wantVar, ".")
-	name := spl[len(spl)-1]
-	genPath := filepath.Dir(f)
+
+	var (
+		spl          = strings.Split(wantTypeVar, ".")
+		wantTypeName = spl[len(spl)-1]
+		genPath      = filepath.Dir(callFile)
+		wireOpt      = []Option{WithPkg(genPackage)}
+	)
 
 	// clean tmp
 	defer func() {
-		cleanIWantATemp(f)
-		err := recover()
-		if err != nil {
+		iw.cleanIWantATemp(callFile)
+		if err := recover(); err != nil {
 			panic(err)
 		} else {
 			os.Exit(0)
 		}
 	}()
 
-	src := []byte(fmt.Sprintf(initTemplate, genPackage, name, wantVar))
-	res, err := imports.Process("", src, nil)
-	if err != nil {
-		fmt.Printf("%s", src)
+	initTmpFileName := filepath.Join(genPath, "wire_init_tmp.go")
+	if err = importAndWrite(initTmpFileName, []byte(fmt.Sprintf(initTemplate, genPackage, wantTypeName, wantTypeVar))); err != nil {
 		panic(err)
 	}
-	_ = ioutil.WriteFile(filepath.Join(genPath, "wire_init_tmp.go"), res, 0664)
+
+	for _, s := range searchDepDirs {
+		wireOpt = append(wireOpt, WithSearchPath(s))
+	}
 
 	// run autowire
-	RunWire(genPath, WithSearchPath(scope[0]), WithPkg(genPackage))
+	if err = RunWire(genPath, wireOpt...); err != nil {
+		panic(err)
+	}
 
 	// gen init
-	wiregenData, _ := ioutil.ReadFile(filepath.Join(genPath, "wire_gen.go"))
-	wiregenData = append(wiregenData, fmt.Sprintf(thisIsYourTemplate, name, wantVar, name)...)
-	genfile := filepath.Join(filepath.Dir(f), fmt.Sprintf("%s_init_test.go", strcase.ToSnake(name)))
-	src = wiregenData
-	wiregenData, err = imports.Process("", src, nil)
-	if err != nil {
-		fmt.Printf("%s", src)
-		panic(err)
-	}
-	err = ioutil.WriteFile(genfile, wiregenData, 0664)
-	if err != nil {
+	if err = iw.writeInitFile(wantTypeVar, wantTypeName); err != nil {
 		panic(err)
 	}
 
-	// rewrite caller replace IWantA with thisIsYour
-	if input == "" {
-		input = "nil"
-	} else {
-		input = "&" + input
-	}
-
-	callLine := strings.TrimSpace(spln[l-1])
-
-	d := fmt.Sprintf("_, _ = thisIsYour%s(%s)", name, input)
-	if strings.HasPrefix(callLine, "var ") {
-		d = "var " + d
-	}
-
-	spln[l-1] = "// " + callLine
-
-	spln = append(spln[:l], append([]string{d}, spln[l:]...)...)
-	src = []byte(strings.Join(spln, "\n"))
-	res, err = imports.Process("", src, nil)
-	if err != nil {
-		fmt.Printf("%s", src)
+	if err = iw.updateCallFile(wantTypeName); err != nil {
 		panic(err)
 	}
-	err = ioutil.WriteFile(f, res, 0664)
-	if err != nil {
-		panic(err)
-	}
-	return nil
+
+	return struct{}{}
 }
 
-func cleanIWantATemp(f string) {
+func (iw *iwantA) updateCallFile(name string) (err error) {
+	var (
+		callLine  = strings.TrimSpace(iw.callFileLines[iw.callLine-1])
+		assignStr = fmt.Sprintf("_, _ = thisIsYour%s(%s)", name, iw.wantInputIdent)
+	)
+
+	if strings.HasPrefix(callLine, "var ") {
+		assignStr = "var " + assignStr
+	}
+
+	iw.callFileLines[iw.callLine-1] = "// " + callLine
+	iw.callFileLines = append(iw.callFileLines[:iw.callLine], append([]string{assignStr}, iw.callFileLines[iw.callLine:]...)...)
+	return importAndWrite(iw.callFile, []byte(strings.Join(iw.callFileLines, "\n")))
+}
+
+func (iw *iwantA) writeInitFile(wantVar, name string) (err error) {
+	var (
+		initFileData []byte
+		genPath      = filepath.Dir(iw.callFile)
+	)
+	if initFileData, err = ioutil.ReadFile(filepath.Join(genPath, "wire_gen.go")); err != nil {
+		return
+	}
+	initFileData = append(initFileData, fmt.Sprintf(thisIsYourTemplate, name, wantVar, name)...)
+	initFileName := filepath.Join(genPath, fmt.Sprintf("%s_init_test.go", strcase.ToSnake(name)))
+	if err = importAndWrite(initFileName, initFileData); err != nil {
+		return
+	}
+	return
+}
+
+func importAndWrite(filename string, src []byte) (err error) {
+	var writeData []byte
+	if writeData, err = imports.Process("", src, nil); err != nil {
+		fmt.Printf("%s", src)
+		return
+	}
+
+	err = ioutil.WriteFile(filename, writeData, os.FileMode(0664))
+	return
+}
+
+func (iw *iwantA) cleanIWantATemp(f string) {
 	dir := filepath.Dir(f)
 	infos, _ := ioutil.ReadDir(dir)
 	for _, info := range infos {

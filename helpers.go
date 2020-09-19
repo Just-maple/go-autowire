@@ -34,7 +34,7 @@ func getModBase() (modBase string, err error) {
 
 func getGoModDir() (modPath string) {
 	mod := getGoModFilePath()
-	modPath, _ = filepath.Split(mod)
+	modPath = filepath.Dir(mod)
 	return
 }
 
