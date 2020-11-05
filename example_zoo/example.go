@@ -11,6 +11,12 @@ type (
 		FlyAnimal FlyAnimal
 	}
 
+	// @autowire.init(set=zoo)
+	MiniZoo struct {
+		Cat       Cat
+		FlyAnimal FlyAnimal
+	}
+
 	// it will be collect into animalsSet
 	// @autowire(set=animals)
 	Cat struct {

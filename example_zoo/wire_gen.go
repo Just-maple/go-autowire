@@ -7,6 +7,17 @@ package example_zoo
 
 // Injectors from wire.gen.go:
 
+func InitializeMiniZoo() (*MiniZoo, func(), error) {
+	cat := Cat{}
+	bird := &Bird{}
+	miniZoo := &MiniZoo{
+		Cat:       cat,
+		FlyAnimal: bird,
+	}
+	return miniZoo, func() {
+	}, nil
+}
+
 func InitializeZoo() (*Zoo, func(), error) {
 	cat := Cat{}
 	dog := ProvideDog()

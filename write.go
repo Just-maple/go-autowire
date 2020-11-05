@@ -76,6 +76,10 @@ func (sc *searcher) writeSets() (err error) {
 		return
 	}
 
+	sort.Slice(sc.initElements, func(i, j int) bool {
+		return sc.initElements[i].name < sc.initElements[j].name
+	})
+
 	inits := []string{fmt.Sprintf(initTemplateHead, sc.pkg)}
 	for _, w := range sc.initElements {
 		inits = append(inits, fmt.Sprintf(initItemTemplate, w.name, appendPkg(w.pkg, w.name)))

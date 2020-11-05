@@ -6,6 +6,10 @@ package example_zoo
 
 import "github.com/google/wire"
 
+func InitializeMiniZoo() (*MiniZoo, func(), error) {
+	panic(wire.Build(Sets))
+}
+
 func InitializeZoo() (*Zoo, func(), error) {
 	panic(wire.Build(Sets))
 }

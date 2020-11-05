@@ -7,5 +7,7 @@ import (
 )
 
 var ZooSet = wire.NewSet(
+	wire.Struct(new(MiniZoo), "*"),
+
 	wire.Struct(new(Zoo), "*"),
 )
