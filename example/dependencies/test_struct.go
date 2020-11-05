@@ -6,7 +6,7 @@ import (
 	"github.com/Just-maple/go-autowire/example/dependencies/test_c"
 )
 
-// @autowire(set=struct)
+// @autowire.init(set=struct)
 type Test struct {
 	T4 test.Test
 	Test2

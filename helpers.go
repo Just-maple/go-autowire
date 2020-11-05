@@ -12,8 +12,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Just-maple/xtoolinternal/gocommand"
+	"github.com/Just-maple/xtoolinternal/imports"
 	"golang.org/x/mod/modfile"
-	"golang.org/x/tools/imports"
+	imports2 "golang.org/x/tools/imports"
 )
 
 var modTmp string
@@ -102,11 +104,31 @@ func getGoPkgNameByDir(pathStr string) (pkg string) {
 
 func importAndWrite(filename string, src []byte) (err error) {
 	var writeData []byte
-	if writeData, err = imports.Process("", src, nil); err != nil {
+	if writeData, err = importProcess(src); err != nil {
 		fmt.Printf("%s", src)
 		return
 	}
 
 	err = ioutil.WriteFile(filename, writeData, os.FileMode(0664))
 	return
+}
+
+var (
+	opt2   = &imports2.Options{Comments: true, TabIndent: true, TabWidth: 8}
+	intopt = &imports.Options{
+		Env: &imports.ProcessEnv{
+			GocmdRunner: &gocommand.Runner{},
+		},
+		LocalPrefix: imports2.LocalPrefix,
+		AllErrors:   opt2.AllErrors,
+		Comments:    opt2.Comments,
+		FormatOnly:  opt2.FormatOnly,
+		Fragment:    opt2.Fragment,
+		TabIndent:   opt2.TabIndent,
+		TabWidth:    opt2.TabWidth,
+	}
+)
+
+func importProcess(src []byte) (ret []byte, err error) {
+	return imports.Process("", src, intopt)
 }

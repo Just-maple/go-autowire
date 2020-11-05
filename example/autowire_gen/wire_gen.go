@@ -14,9 +14,9 @@ import (
 	"github.com/Just-maple/go-autowire/example/dependencies/test_c"
 )
 
-// Injectors from wire.go:
+// Injectors from wire.gen.go:
 
-func InitTest() dependencies.Test {
+func InitializeTest() (*dependencies.Test, func(), error) {
 	testTest := test.Test{}
 	testTest2 := test.Test2{}
 	test2_2 := test2.Test2{
@@ -56,7 +56,7 @@ func InitTest() dependencies.Test {
 	test2_4 := &dependencies.Test2{
 		Test3: dependenciesTest3,
 	}
-	dependenciesTest := dependencies.Test{
+	dependenciesTest := &dependencies.Test{
 		T4:    test3,
 		Test2: dependenciesTest2,
 		Test3: dependenciesTest3,
@@ -67,5 +67,6 @@ func InitTest() dependencies.Test {
 		T2:    test_cTest2,
 		T:     test2_4,
 	}
-	return dependenciesTest
+	return dependenciesTest, func() {
+	}, nil
 }
