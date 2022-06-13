@@ -28,7 +28,7 @@ var {{ .SetName }} = wire.NewSet({{ range $Item := .Items}}
 package %s
 `
 	initItemTemplate = `
-func Initialize%s() (*%s, func(), error) {
+func Initialize%s(%s) (*%s, func(), error) {
 	panic(wire.Build(Sets))
 }
 `
@@ -53,25 +53,27 @@ type (
 	Option func(*opt)
 
 	searcher struct {
-		sets         []string
-		genPath      string
-		pkg          string
-		elementMap   map[string]map[string]element
-		options      []Option
-		modBase      string
-		initElements []element
-		initWire     bool
+		sets           []string
+		genPath        string
+		pkg            string
+		elementMap     map[string]map[string]element
+		options        []Option
+		modBase        string
+		initElements   []element
+		configElements []element
+		initWire       bool
 	}
 
 	element struct {
 		name        string
 		constructor string
-		field       []string
+		fields      []string
 		implements  []string
 		pkg         string
 		pkgPath     string
 		typ         uint
 		initWire    bool
+		configWire  bool
 	}
 
 	tmpDecl struct {

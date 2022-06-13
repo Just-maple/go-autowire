@@ -12,7 +12,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/iancoleman/strcase"
+	"github.com/stoewer/go-strcase"
 )
 
 const (
@@ -110,12 +110,12 @@ func IWantA(in interface{}, searchDepDirs ...string) (_ struct{}) {
 	}
 
 	var (
-		wantTypeName = strcase.ToSnake(strings.Replace(strings.Replace(wantTypeVar, "_", "", -1), ".", "_", -1))
+		wantTypeName = strcase.SnakeCase(strings.Replace(strings.Replace(wantTypeVar, "_", "", -1), ".", "_", -1))
 		genPath      = filepath.Dir(callFile)
 		wireOpt      = []Option{WithPkg(genPackage)}
 	)
 
-	iw.typeName = strcase.ToCamel(wantTypeName)
+	iw.typeName = strcase.UpperCamelCase(wantTypeName)
 
 	// clean tmp
 	defer func() {
@@ -173,7 +173,7 @@ func (iw *iwantA) writeInitFile(wantVar, name string) (err error) {
 	if err != nil {
 		return
 	}
-	filename := fmt.Sprintf("%s_init", strcase.ToSnake(name))
+	filename := fmt.Sprintf("%s_init", strcase.SnakeCase(name))
 	if isTest {
 		filename += "_test"
 	}

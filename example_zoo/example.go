@@ -5,10 +5,12 @@ type (
 	// use init to create initZoo method in wire.gen.go
 	// @autowire.init(set=zoo)
 	Zoo struct {
-		Cat       Cat
-		Dog       Dog
-		Lion      Lion
-		FlyAnimal FlyAnimal
+		Cat          Cat
+		Dog          Dog
+		Lion         Lion
+		FlyAnimal    FlyAnimal
+		ConfigField  ConfigField
+		ConfigField2 ConfigField2
 	}
 
 	// @autowire.init(set=zoo)
@@ -32,6 +34,18 @@ type (
 
 	// use provider func
 	Dog struct{}
+
+	// @autowire.config(set=config)
+	Config struct {
+		ConfigField ConfigField
+		ConfigField2
+	}
+
+	ConfigField struct {
+	}
+
+	ConfigField2 struct {
+	}
 )
 
 // it will be collect into animalsSet

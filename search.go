@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/iancoleman/strcase"
+	"github.com/stoewer/go-strcase"
 )
 
 func SearchAllPath(genPath string, opts ...Option) (err error) {
@@ -206,14 +206,14 @@ func (sc *searcher) analysisWireTag(tag, filePath string, decl *tmpDecl, f *ast.
 		sc.elementMap[setName][path.Join(pkgPath, name)] = e
 		return
 	} else {
-		setName = strcase.ToLowerCamel(options["set"])
+		setName = strcase.LowerCamelCase(options["set"])
 	}
 
 	if sc.elementMap[setName] == nil {
 		sc.elementMap[setName] = make(map[string]element)
 	}
 	defer func() {
-		log.Printf("%sSet : %s\n", strcase.ToLowerCamel(setName), e.pkg+"."+e.name)
+		log.Printf("%sSet : %s\n", strcase.LowerCamelCase(setName), e.pkg+"."+e.name)
 		sc.elementMap[setName][path.Join(pkgPath, name)] = e
 	}()
 
@@ -221,8 +221,6 @@ func (sc *searcher) analysisWireTag(tag, filePath string, decl *tmpDecl, f *ast.
 		switch key {
 		case "set":
 			continue
-		case "field":
-			e.field = append(e.field, value)
 		case "new":
 			e.constructor = value
 		default:
@@ -233,6 +231,21 @@ func (sc *searcher) analysisWireTag(tag, filePath string, decl *tmpDecl, f *ast.
 	switch itemFunc {
 	case "init":
 		e.initWire = true
+	case "config":
+		st, isStruct := decl.typeSpec.Type.(*ast.StructType)
+		if !isStruct || st.Fields == nil || len(st.Fields.List) == 0 {
+			return
+		}
+		e.configWire = true
+		for _, f := range st.Fields.List {
+			fieldName := fmt.Sprintf("%s", f.Type)
+			if f.Names != nil {
+				fieldName = f.Names[0].String()
+			}
+			if fieldName[0] >= 'A' && fieldName[0] <= 'Z' {
+				e.fields = append(e.fields, fieldName)
+			}
+		}
 	}
 	if len(implementMap[name]) > 0 {
 		insertIfUnExist(implementMap[name], &e.implements)

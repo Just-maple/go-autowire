@@ -6,8 +6,6 @@ import (
 	"github.com/google/wire"
 )
 
-var Sets = wire.NewSet(
-	AnimalsSet,
-	ConfigSet,
-	ZooSet,
+var ConfigSet = wire.NewSet(
+	wire.FieldsOf(new(*Config), "ConfigField", "ConfigField2"),
 )

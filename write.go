@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/iancoleman/strcase"
+	"github.com/stoewer/go-strcase"
 )
 
 func (sc *searcher) clean() (err error) {
@@ -81,8 +81,19 @@ func (sc *searcher) writeSets() (err error) {
 	})
 
 	inits := []string{fmt.Sprintf(initTemplateHead, sc.pkg)}
+	configs := make([]string, 0, len(sc.configElements))
+
+	sort.Slice(sc.configElements, func(i, j int) bool {
+		return sc.configElements[i].name < sc.configElements[j].name
+	})
+
+	for i, c := range sc.configElements {
+		configs = append(configs, fmt.Sprintf(`c%d *%s`, i, appendPkg(c.pkg, c.name)))
+	}
+
+	paramConfig := strings.Join(configs, ",")
 	for _, w := range sc.initElements {
-		inits = append(inits, fmt.Sprintf(initItemTemplate, w.name, appendPkg(w.pkg, w.name)))
+		inits = append(inits, fmt.Sprintf(initItemTemplate, w.name, paramConfig, appendPkg(w.pkg, w.name)))
 	}
 
 	wireGenData := strings.Join(inits, "\n")
@@ -95,8 +106,8 @@ func (sc *searcher) writeSet(set string, m map[string]element) (err error) {
 		order  = make([]string, 0, len(m))
 		pkgMap = make(map[string]map[string]string)
 
-		setName  = strings.Title(strcase.ToCamel(set)) + "Set"
-		fileName = filepath.Join(sc.genPath, filePrefix+"_"+strcase.ToSnake(set)+".go")
+		setName  = strings.Title(strcase.UpperCamelCase(set)) + "Set"
+		fileName = filepath.Join(sc.genPath, filePrefix+"_"+strcase.SnakeCase(set)+".go")
 		fs       = token.NewFileSet()
 	)
 
@@ -149,7 +160,6 @@ func (sc *searcher) writeSet(set string, m map[string]element) (err error) {
 	)
 
 	for _, key := range order {
-		// todo:support struct fields
 		// generate wire define
 		var (
 			wireItem []string
@@ -162,21 +172,27 @@ func (sc *searcher) writeSet(set string, m map[string]element) (err error) {
 
 		stName := appendPkg(elem.pkg, elem.name)
 
-		if elem.constructor != "" {
-			wireItem = append(wireItem, appendPkg(elem.pkg, elem.constructor))
+		if elem.configWire {
+			wireItem = append(wireItem, fmt.Sprintf(`wire.FieldsOf(new(*%s),"%s")`, stName, strings.Join(elem.fields, `","`)))
+			sc.configElements = append(sc.configElements, elem)
 		} else {
-			wireItem = append(wireItem, fmt.Sprintf(`wire.Struct(new(%s), "*")`, stName))
+			if elem.constructor != "" {
+				wireItem = append(wireItem, appendPkg(elem.pkg, elem.constructor))
+			} else {
+				wireItem = append(wireItem, fmt.Sprintf(`wire.Struct(new(%s), "*")`, stName))
+			}
+
+			for _, itf := range elem.implements {
+				var itfName string
+				if strings.Contains(itf, ".") {
+					itfName = itf
+				} else {
+					itfName = appendPkg(elem.pkg, itf)
+				}
+				wireItem = append(wireItem, fmt.Sprintf(`wire.Bind(new(%s), new(*%s))`, itfName, stName))
+			}
 		}
 
-		for _, itf := range elem.implements {
-			var itfName string
-			if strings.Contains(itf, ".") {
-				itfName = itf
-			} else {
-				itfName = appendPkg(elem.pkg, itf)
-			}
-			wireItem = append(wireItem, fmt.Sprintf(`wire.Bind(new(%s), new(*%s))`, itfName, stName))
-		}
 		data.Items = append(data.Items, strings.Join(wireItem, ",\n\t"))
 
 		if elem.initWire {
