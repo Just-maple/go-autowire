@@ -47,7 +47,7 @@ type (
 		searchPath string
 		pkg        string
 		genPath    string
-		initWire   bool
+		initWire   []string
 	}
 
 	Option func(*opt)
@@ -61,7 +61,7 @@ type (
 		modBase        string
 		initElements   []element
 		configElements []element
-		initWire       bool
+		initWire       []string
 	}
 
 	element struct {
@@ -89,9 +89,13 @@ func WithPkg(pkg string) Option {
 		o.pkg = pkg
 	}
 }
-func InitWire() Option {
+
+func InitWire(initStruct ...string) Option {
 	return func(o *opt) {
-		o.initWire = true
+		if len(initStruct) == 0 {
+			initStruct = []string{"*"}
+		}
+		o.initWire = initStruct
 	}
 }
 

@@ -16,18 +16,13 @@ import (
 )
 
 const (
-	initTemplate = `// +build wireinject
-
-package %s
-
-func Initialize%s() (%s, func(), error) {
-	panic(wire.Build(Sets))
-}
-`
-
 	thisIsYourTemplate = `
 func thisIsYour%s(res *%s) (err error, cleanup func()) {
-	*res, cleanup, err = Initialize%s()
+	ret, cleanup, err := %s
+	if err != nil{
+		return
+	}
+	*res = *ret
 	return
 }
 `
@@ -127,14 +122,11 @@ func IWantA(in interface{}, searchDepDirs ...string) (_ struct{}) {
 		}
 	}()
 
-	initTmpFileName := filepath.Join(genPath, "wire_init_tmp.go")
-	if err = importAndWrite(initTmpFileName, []byte(fmt.Sprintf(initTemplate, genPackage, iw.typeName, wantTypeVar))); err != nil {
-		panic(err)
-	}
-
 	for _, s := range searchDepDirs {
 		wireOpt = append(wireOpt, WithSearchPath(s))
 	}
+
+	wireOpt = append(wireOpt, InitWire(wantTypeVar))
 
 	// run autowire
 	if err = RunWire(genPath, wireOpt...); err != nil {
@@ -166,6 +158,10 @@ func (iw *iwantA) updateCallFile() (err error) {
 	return importAndWrite(iw.callFile, []byte(strings.Join(iw.callFileLines, "\n")))
 }
 
+//InitializeZoo(c0 *example_zoo.Config)
+
+var regexpInitMethod = regexp.MustCompile(`Initialize(.+?)\((.+?)\)`)
+
 func (iw *iwantA) writeInitFile(wantVar, name string) (err error) {
 	genPath := filepath.Dir(iw.callFile)
 	initFileData, err := ioutil.ReadFile(filepath.Join(genPath, "wire_gen.go"))
@@ -173,12 +169,26 @@ func (iw *iwantA) writeInitFile(wantVar, name string) (err error) {
 	if err != nil {
 		return
 	}
+
+	call := ""
+	ret := regexpInitMethod.FindStringSubmatch(string(initFileData))
+	if len(ret) == 3 {
+		params := make([]string, 0)
+		for _, sp := range strings.Split(ret[2], ",") {
+			spp := strings.Split(sp, " ")
+			if len(spp) == 2 {
+				params = append(params, "&"+strings.TrimPrefix(spp[1], "*")+"{}")
+			}
+		}
+		call = fmt.Sprintf(`Initialize%s(%s)`, ret[1], strings.Join(params, ","))
+	}
+
 	filename := fmt.Sprintf("%s_init", strcase.SnakeCase(name))
 	if isTest {
 		filename += "_test"
 	}
 	filename += ".go"
-	initFileData = append(initFileData, fmt.Sprintf(thisIsYourTemplate, iw.typeName, wantVar, iw.typeName)...)
+	initFileData = append(initFileData, fmt.Sprintf(thisIsYourTemplate, iw.typeName, wantVar, call)...)
 	initFileName := filepath.Join(genPath, filename)
 	if err = importAndWrite(initFileName, initFileData); err != nil {
 		return
@@ -190,7 +200,7 @@ func (iw *iwantA) cleanIWantATemp(f string) {
 	dir := filepath.Dir(f)
 	infos, _ := ioutil.ReadDir(dir)
 	for _, info := range infos {
-		if strings.HasPrefix(info.Name(), "autowire") || info.Name() == "wire_gen.go" || info.Name() == "wire_init_tmp.go" {
+		if strings.HasPrefix(info.Name(), "autowire") || info.Name() == "wire.gen.go" || info.Name() == "wire_gen.go" || info.Name() == "wire_init_tmp.go" {
 			_ = os.Remove(filepath.Join(dir, info.Name()))
 		}
 	}
