@@ -95,18 +95,13 @@ func (sc *searcher) writeSets() (err error) {
 
 	if len(sc.initWire) == 1 && sc.initWire[0] == "*" {
 		for _, w := range sc.initElements {
-			inits = append(inits, fmt.Sprintf(initItemTemplate, w.name, paramConfig, appendPkg(w.pkg, w.name)))
+			inits = append(inits, fmt.Sprintf(initItemTemplate, w.name, paramConfig, "*"+appendPkg(w.pkg, w.name)))
 		}
 	} else {
 		for _, i := range sc.initWire {
-			for _, w := range sc.initElements {
-				if appendPkg(w.pkg, w.name) != i {
-					continue
-				}
-				inits = append(inits, fmt.Sprintf(initItemTemplate, w.name, paramConfig, appendPkg(w.pkg, w.name)))
-			}
+			sp := strings.Split(i, ".")
+			inits = append(inits, fmt.Sprintf(initItemTemplate, sp[len(sp)-1], paramConfig, i))
 		}
-
 	}
 
 	wireGenData := strings.Join(inits, "\n")

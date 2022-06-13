@@ -6,7 +6,7 @@ import (
 	"github.com/Just-maple/go-autowire/example_zoo"
 )
 
-var zoo example_zoo.Zoo
+var zoo example_zoo.Dog
 var testI dependencies.Test
 var local Local
 

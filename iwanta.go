@@ -18,11 +18,7 @@ import (
 const (
 	thisIsYourTemplate = `
 func thisIsYour%s(res *%s) (err error, cleanup func()) {
-	ret, cleanup, err := %s
-	if err != nil{
-		return
-	}
-	*res = *ret
+	*res, cleanup, err = %s
 	return
 }
 `
@@ -126,7 +122,7 @@ func IWantA(in interface{}, searchDepDirs ...string) (_ struct{}) {
 		wireOpt = append(wireOpt, WithSearchPath(s))
 	}
 
-	wireOpt = append(wireOpt, InitWire(wantTypeVar))
+	wireOpt = append(wireOpt, InitWire(strings.TrimPrefix(wantTypeVar, "*")))
 
 	// run autowire
 	if err = RunWire(genPath, wireOpt...); err != nil {
@@ -157,8 +153,6 @@ func (iw *iwantA) updateCallFile() (err error) {
 	iw.callFileLines = append(iw.callFileLines[:iw.callLine], append([]string{assignStr}, iw.callFileLines[iw.callLine:]...)...)
 	return importAndWrite(iw.callFile, []byte(strings.Join(iw.callFileLines, "\n")))
 }
-
-//InitializeZoo(c0 *example_zoo.Config)
 
 var regexpInitMethod = regexp.MustCompile(`Initialize(.+?)\((.+?)\)`)
 
