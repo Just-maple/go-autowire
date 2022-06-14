@@ -5,5 +5,6 @@ type Local struct {
 	Dep
 }
 
+//@autowire()
 type Dep struct {
 }

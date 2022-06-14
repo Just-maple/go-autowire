@@ -15,4 +15,6 @@ var AnimalsSet = wire.NewSet(
 	NewLion,
 
 	ProvideDog,
+
+	InitSomeTiger,
 )

@@ -52,7 +52,7 @@ type (
 
 	Option func(*opt)
 
-	searcher struct {
+	autoWireSearcher struct {
 		sets           []string
 		genPath        string
 		pkg            string
@@ -90,7 +90,7 @@ func WithPkg(pkg string) Option {
 	}
 }
 
-func InitWire(initStruct ...string) Option {
+func InitStruct(initStruct ...string) Option {
 	return func(o *opt) {
 		if len(initStruct) == 0 {
 			initStruct = []string{"*"}

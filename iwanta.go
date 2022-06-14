@@ -1,9 +1,8 @@
 package gutowire
 
 import (
+	"errors"
 	"fmt"
-	"go/parser"
-	"go/token"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -17,7 +16,7 @@ import (
 
 const (
 	thisIsYourTemplate = `
-func thisIsYour%s(res *%s) (err error, cleanup func()) {
+func thisIsYour%s(res *%s,%s) (err error, cleanup func()) {
 	*res, cleanup, err = %s
 	return
 }
@@ -27,12 +26,12 @@ func thisIsYour%s(res *%s) (err error, cleanup func()) {
 var regexpCall = regexp.MustCompile(`gutowire\.IWantA\(&([a-zA-Z]+).*?\)`)
 
 type iwantA struct {
-	wantInputIdent string
-	wantName       string
-	typeName       string
-	callFileLines  []string
-	callLine       int
-	callFile       string
+	wantInputIdent     string
+	wantName           string
+	thisIsYourFuncName string
+	callFileLines      []string
+	callLine           int
+	callFile           string
 }
 
 func (iw *iwantA) initWantArgIdent() {
@@ -67,11 +66,8 @@ func IWantA(in interface{}, searchDepDirs ...string) (_ struct{}) {
 	}
 
 	var (
-		callFileData, _  = ioutil.ReadFile(callFile)
-		fileSet          = token.NewFileSet()
-		astCallFile, err = parser.ParseFile(fileSet, "", callFileData, parser.ParseComments)
-
-		iw = &iwantA{
+		callFileData, _ = ioutil.ReadFile(callFile)
+		iw              = &iwantA{
 			callFile:      callFile,
 			callLine:      callLine,
 			callFileLines: strings.Split(string(callFileData), "\n"),
@@ -80,21 +76,17 @@ func IWantA(in interface{}, searchDepDirs ...string) (_ struct{}) {
 
 	iw.initWantArgIdent()
 
-	if err != nil {
-		panic(err)
-	}
-
 	// gen wire.go
 	var (
 		wantTypeVar string
+		genSuccess  bool
 
-		genPackage    = astCallFile.Name.Name
-		rType         = reflect.TypeOf(in).Elem()
-		modeBase, _   = getModBase()
-		iwantaPkgPath = getPkgPath(callFile, modeBase)
+		rType       = reflect.TypeOf(in).Elem()
+		modeBase, _ = getModBase()
+		callPkgPath = getPkgPath(callFile, modeBase)
 	)
 
-	if rType.PkgPath() == iwantaPkgPath {
+	if rType.PkgPath() == callPkgPath {
 		wantTypeVar = rType.Name()
 	} else {
 		wantTypeVar = rType.String()
@@ -103,17 +95,15 @@ func IWantA(in interface{}, searchDepDirs ...string) (_ struct{}) {
 	var (
 		wantTypeName = strcase.SnakeCase(strings.Replace(strings.Replace(wantTypeVar, "_", "", -1), ".", "_", -1))
 		genPath      = filepath.Dir(callFile)
-		wireOpt      = []Option{WithPkg(genPackage)}
+		wireOpt      = make([]Option, 0)
 	)
 
-	iw.typeName = strcase.UpperCamelCase(wantTypeName)
+	iw.thisIsYourFuncName = strcase.UpperCamelCase(wantTypeName)
 
 	// clean tmp
 	defer func() {
 		iw.cleanIWantATemp(callFile)
-		if err := recover(); err != nil {
-			panic(err)
-		} else {
+		if genSuccess {
 			os.Exit(0)
 		}
 	}()
@@ -122,28 +112,31 @@ func IWantA(in interface{}, searchDepDirs ...string) (_ struct{}) {
 		wireOpt = append(wireOpt, WithSearchPath(s))
 	}
 
-	wireOpt = append(wireOpt, InitWire(strings.TrimPrefix(wantTypeVar, "*")))
+	wireOpt = append(wireOpt, InitStruct(strings.TrimPrefix(wantTypeVar, "*")))
 
 	// run autowire
-	if err = RunWire(genPath, wireOpt...); err != nil {
+	if err := RunAutoWire(genPath, wireOpt...); err != nil {
 		panic(err)
 	}
 
 	// gen init
-	if err = iw.writeInitFile(wantTypeVar, wantTypeName); err != nil {
+	args, err := iw.writeInitFile(wantTypeVar, wantTypeName)
+	if err != nil {
 		panic(err)
 	}
 
-	if err = iw.updateCallFile(); err != nil {
+	if err = iw.updateCallFile(args); err != nil {
 		panic(err)
 	}
 
+	genSuccess = true
 	return struct{}{}
 }
 
-func (iw *iwantA) updateCallFile() (err error) {
+func (iw *iwantA) updateCallFile(configArgs []string) (err error) {
 	callLine := strings.TrimSpace(iw.callFileLines[iw.callLine-1])
-	assignStr := fmt.Sprintf("_, _ = thisIsYour%s(%s)", iw.typeName, iw.wantInputIdent)
+	callArgs := strings.Join(append([]string{iw.wantInputIdent}, configArgs...), ",")
+	assignStr := fmt.Sprintf("_, _ = thisIsYour%s(%s)", iw.thisIsYourFuncName, callArgs)
 
 	if strings.HasPrefix(callLine, "var ") {
 		assignStr = "var " + assignStr
@@ -154,35 +147,38 @@ func (iw *iwantA) updateCallFile() (err error) {
 	return importAndWrite(iw.callFile, []byte(strings.Join(iw.callFileLines, "\n")))
 }
 
-var regexpInitMethod = regexp.MustCompile(`Initialize(.+?)\((.+?)\)`)
+var regexpInitMethod = regexp.MustCompile(`Initialize(.+?)\((.*?)\)`)
 
-func (iw *iwantA) writeInitFile(wantVar, name string) (err error) {
+func (iw *iwantA) writeInitFile(wantVar, name string) (args []string, err error) {
 	genPath := filepath.Dir(iw.callFile)
 	initFileData, err := ioutil.ReadFile(filepath.Join(genPath, "wire_gen.go"))
-	isTest := strings.HasSuffix(iw.callFile, "_test.go")
 	if err != nil {
 		return
 	}
-
 	call := ""
 	ret := regexpInitMethod.FindStringSubmatch(string(initFileData))
-	if len(ret) == 3 {
-		params := make([]string, 0)
-		for _, sp := range strings.Split(ret[2], ",") {
-			spp := strings.Split(sp, " ")
-			if len(spp) == 2 {
-				params = append(params, "&"+strings.TrimPrefix(spp[1], "*")+"{}")
+	if len(ret) >= 2 {
+		argsVar := make([]string, 0)
+		if len(ret) > 2 {
+			for _, sp := range strings.Split(ret[2], ",") {
+				if spp := strings.SplitN(sp, " ", 2); len(spp) == 2 {
+					args = append(args, "&"+strings.TrimPrefix(spp[1], "*")+"{}")
+					argsVar = append(argsVar, spp[0])
+				}
 			}
 		}
-		call = fmt.Sprintf(`Initialize%s(%s)`, ret[1], strings.Join(params, ","))
+		call = fmt.Sprintf(`Initialize%s(%s)`, ret[1], strings.Join(argsVar, ","))
+	} else {
+		err = errors.New("invalid init file")
+		return
 	}
 
 	filename := fmt.Sprintf("%s_init", strcase.SnakeCase(name))
-	if isTest {
+	if strings.HasSuffix(iw.callFile, "_test.go") {
 		filename += "_test"
 	}
 	filename += ".go"
-	initFileData = append(initFileData, fmt.Sprintf(thisIsYourTemplate, iw.typeName, wantVar, call)...)
+	initFileData = append(initFileData, fmt.Sprintf(thisIsYourTemplate, iw.thisIsYourFuncName, wantVar, ret[2], call)...)
 	initFileName := filepath.Join(genPath, filename)
 	if err = importAndWrite(initFileName, initFileData); err != nil {
 		return
@@ -194,7 +190,9 @@ func (iw *iwantA) cleanIWantATemp(f string) {
 	dir := filepath.Dir(f)
 	infos, _ := ioutil.ReadDir(dir)
 	for _, info := range infos {
-		if strings.HasPrefix(info.Name(), "autowire") || info.Name() == "wire.gen.go" || info.Name() == "wire_gen.go" || info.Name() == "wire_init_tmp.go" {
+		if strings.HasPrefix(info.Name(), "autowire") ||
+			info.Name() == "wire.gen.go" ||
+			info.Name() == "wire_gen.go" {
 			_ = os.Remove(filepath.Join(dir, info.Name()))
 		}
 	}

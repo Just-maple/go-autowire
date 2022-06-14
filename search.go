@@ -16,7 +16,7 @@ import (
 	"github.com/stoewer/go-strcase"
 )
 
-func SearchAllPath(genPath string, opts ...Option) (err error) {
+func RunAutoWireGen(genPath string, opts ...Option) (err error) {
 	o := newGenOpt(genPath, opts...)
 	file := o.searchPath
 	pkg := o.pkg
@@ -25,7 +25,7 @@ func SearchAllPath(genPath string, opts ...Option) (err error) {
 		return
 	}
 	pkg = strings.Replace(pkg, "-", "_", -1)
-	sc := &searcher{
+	sc := &autoWireSearcher{
 		genPath:    genPath,
 		pkg:        pkg,
 		elementMap: make(map[string]map[string]element),
@@ -37,27 +37,26 @@ func SearchAllPath(genPath string, opts ...Option) (err error) {
 		return
 	}
 	log.Printf("analysis autowire complete")
-	return writeGen(sc)
+	if len(sc.elementMap) == 0 {
+		return
+	}
+	return sc.write()
 }
 
-func (sc *searcher) SearchAllPath(file string) (err error) {
-	err = filepath.Walk(file, func(path string, f os.FileInfo, err error) error {
+func (sc *autoWireSearcher) SearchAllPath(file string) (err error) {
+	return filepath.Walk(file, func(path string, f os.FileInfo, err error) error {
 		fn := f.Name()
 		if f.IsDir() && (fn == "vendor" || fn == "testdata") {
 			return filepath.SkipDir
 		}
-		if !f.IsDir() && strings.HasSuffix(fn, ".go") && !strings.HasSuffix(fn, "_test.go") {
-			err = sc.searchWire(path)
-			if err != nil {
-				return err
-			}
+		if f.IsDir() || !strings.HasSuffix(fn, ".go") || strings.HasSuffix(fn, "_test.go") {
+			return nil
 		}
-		return nil
+		return sc.searchWire(path)
 	})
-	return
 }
 
-func (sc *searcher) searchWire(file string) (err error) {
+func (sc *autoWireSearcher) searchWire(file string) (err error) {
 	data, err := ioutil.ReadFile(file)
 	if err != nil {
 		return err
@@ -65,34 +64,42 @@ func (sc *searcher) searchWire(file string) (err error) {
 	if !bytes.Contains(data, []byte(wireTag)) {
 		return
 	}
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "", data, parser.ParseComments)
+
+	parseFile, err := parser.ParseFile(token.NewFileSet(), "", data, parser.ParseComments)
 	if err != nil {
 		return
 	}
 
 	genPkgPath := fmt.Sprintf(`"%s"`, sc.getPkgPath(filepath.Join(sc.genPath, "...")))
+
 	// to avoid import cycle
-	for _, imp := range f.Imports {
+	for _, imp := range parseFile.Imports {
 		if imp.Path.Value == genPkgPath {
-			log.Printf("[warn] pacakge %s from [ %s ] ignore to avoid import cycle", f.Name.Name, file)
+			log.Printf("[warn] pacakge %s from [ %s ] ignore to avoid import cycle", parseFile.Name.Name, file)
 			return
 		}
 	}
 
-	var tmpDecls []tmpDecl
-	for _, decl := range f.Decls {
+	var matchDecls []tmpDecl
+
+	for _, decl := range parseFile.Decls {
 		switch d := decl.(type) {
 		case *ast.GenDecl:
 			if !(d.Tok.String() == "type") {
 				continue
 			}
+			/*
+				@autowire()
+				type Some struct{
+
+				}
+			*/
 			if len(d.Specs) == 1 && strings.Contains(d.Doc.Text(), wireTag) {
 				id, ok := d.Specs[0].(*ast.TypeSpec)
 				if !ok {
 					continue
 				}
-				tmpDecls = append(tmpDecls, tmpDecl{
+				matchDecls = append(matchDecls, tmpDecl{
 					docs:     d.Doc.Text(),
 					name:     id.Name.Name,
 					isFunc:   false,
@@ -100,12 +107,21 @@ func (sc *searcher) searchWire(file string) (err error) {
 				})
 				continue
 			}
+			/*
+				type (
+					@autowire()
+					A struct{}
+
+					@autowire()
+					B struct{}
+				)
+			*/
 			for _, sp := range d.Specs {
 				id, ok := sp.(*ast.TypeSpec)
 				if !(ok && strings.Contains(id.Doc.Text(), wireTag)) {
 					continue
 				}
-				tmpDecls = append(tmpDecls, tmpDecl{
+				matchDecls = append(matchDecls, tmpDecl{
 					docs:     id.Doc.Text(),
 					name:     id.Name.Name,
 					isFunc:   false,
@@ -115,28 +131,35 @@ func (sc *searcher) searchWire(file string) (err error) {
 
 			}
 		case *ast.FuncDecl:
-			tmpDecls = append(tmpDecls, tmpDecl{
+			/*
+				@autowire()
+				func ConstructorForSomething() Something
+			*/
+			if !strings.Contains(d.Doc.Text(), wireTag) {
+				continue
+			}
+			matchDecls = append(matchDecls, tmpDecl{
 				docs:   d.Doc.Text(),
 				name:   d.Name.Name,
 				isFunc: true,
 			})
 		}
 	}
-	implementMap := getImplement(f)
-	for _, decl := range tmpDecls {
+	implementMap := getImplement(parseFile)
+	for _, decl := range matchDecls {
 		lines := strings.Split(decl.docs, "\n")
 		for _, c := range lines {
-			sc.analysisWireTag(strings.TrimSpace(c), file, &decl, f, implementMap)
+			sc.analysisWireTag(strings.TrimSpace(c), file, &decl, parseFile, implementMap)
 		}
 	}
 	return
 }
 
-func (sc *searcher) getPkgPath(filePath string) (pkgPath string) {
+func (sc *autoWireSearcher) getPkgPath(filePath string) (pkgPath string) {
 	return getPkgPath(filePath, sc.modBase)
 }
 
-func (sc *searcher) analysisWireTag(tag, filePath string, decl *tmpDecl, f *ast.File, implementMap map[string]string) {
+func (sc *autoWireSearcher) analysisWireTag(tag, filePath string, decl *tmpDecl, f *ast.File, implementMap map[string]string) {
 	if !strings.HasPrefix(tag, wireTag) {
 		return
 	}
@@ -163,48 +186,43 @@ func (sc *searcher) analysisWireTag(tag, filePath string, decl *tmpDecl, f *ast.
 		return
 	}
 
-	options := map[string]string{}
-	// todo:support more
-	// @autowire(interface,interface,set=setName,field=*)
-	tagStr = tagStr[1 : len(tagStr)-1]
-	sp := strings.Split(tagStr, ",")
-	for _, s := range sp {
-		s = strings.TrimSpace(s)
-		if len(s) == 0 {
+	options := make(map[string]string)
+	// @autowire(interface,interface,set=setName)
+	// parse tag options
+	for _, s := range strings.Split(strings.TrimPrefix(strings.TrimSuffix(tagStr, ")"), "("), ",") {
+		if s = strings.TrimSpace(s); len(s) == 0 {
 			continue
 		}
 		spo := strings.Split(s, "=")
-		var v string
+		v := ""
 		if len(spo) > 1 {
-			v = spo[1]
+			v = strings.TrimSpace(spo[1])
 		}
-		options[spo[0]] = v
+		options[strings.TrimSpace(spo[0])] = v
 	}
-	e := element{
-		name:        name,
-		constructor: "",
-		pkg:         f.Name.Name,
-		pkgPath:     pkgPath,
+
+	wireElement := element{
+		name:    name,
+		pkg:     f.Name.Name,
+		pkgPath: pkgPath,
 	}
+
 	if isFunc {
-		e.constructor = name
+		wireElement.constructor = name
 	} else {
-		for _, cn := range []string{"Init", "New"} {
-			if ct, ok := f.Scope.Objects[cn+name]; ok && ct.Kind == ast.Fun {
-				e.constructor = cn + name
+		// found constructor function name with prefix
+		for _, constructorPrefix := range []string{"Init", "New"} {
+			if ct, ok := f.Scope.Objects[constructorPrefix+name]; ok && ct.Kind == ast.Fun {
+				wireElement.constructor = constructorPrefix + name
 				break
 			}
 		}
 	}
 
+	// parse set group
 	var setName string
 	if len(options["set"]) == 0 {
 		setName = "unknown"
-		if sc.elementMap[setName] == nil {
-			sc.elementMap[setName] = make(map[string]element)
-		}
-		sc.elementMap[setName][path.Join(pkgPath, name)] = e
-		return
 	} else {
 		setName = strcase.LowerCamelCase(options["set"])
 	}
@@ -212,46 +230,59 @@ func (sc *searcher) analysisWireTag(tag, filePath string, decl *tmpDecl, f *ast.
 	if sc.elementMap[setName] == nil {
 		sc.elementMap[setName] = make(map[string]element)
 	}
+
 	defer func() {
-		log.Printf("%sSet : %s\n", strcase.LowerCamelCase(setName), e.pkg+"."+e.name)
-		sc.elementMap[setName][path.Join(pkgPath, name)] = e
+		log.Printf("wire object collected [ %sSet ] : %s\n", strcase.LowerCamelCase(setName), wireElement.pkg+"."+wireElement.name)
+		sc.elementMap[setName][path.Join(pkgPath, name)] = wireElement
 	}()
 
+	// parse options
 	for key, value := range options {
 		switch key {
 		case "set":
 			continue
 		case "new":
-			e.constructor = value
+			if ct, ok := f.Scope.Objects[value]; ok && ct.Kind == ast.Fun {
+				wireElement.constructor = value
+			}
+			continue
 		default:
-			e.implements = append(e.implements, key)
+			wireElement.implements = append(wireElement.implements, key)
 		}
 	}
 
+	// parse item func
+	// @autowire.init as InitEntry
+	// @autowire.config as InitEntryConfigParams
 	switch itemFunc {
 	case "init":
-		e.initWire = true
+		wireElement.initWire = true
 	case "config":
+		if decl.typeSpec == nil {
+			break
+		}
 		st, isStruct := decl.typeSpec.Type.(*ast.StructType)
 		if !isStruct || st.Fields == nil || len(st.Fields.List) == 0 {
-			return
+			break
 		}
-		e.configWire = true
+		wireElement.configWire = true
 		for _, f := range st.Fields.List {
 			fieldName := fmt.Sprintf("%s", f.Type)
 			if f.Names != nil {
 				fieldName = f.Names[0].String()
 			}
 			if fieldName[0] >= 'A' && fieldName[0] <= 'Z' {
-				e.fields = append(e.fields, fieldName)
+				wireElement.fields = append(wireElement.fields, fieldName)
 			}
 		}
 	}
+
 	if len(implementMap[name]) > 0 {
-		insertIfUnExist(implementMap[name], &e.implements)
+		insertIfUnExist(implementMap[name], &wireElement.implements)
 	}
 }
 
+// analyse implement assign in same file like: var _ io.Writer = &myWriter{}
 func getImplement(f *ast.File) (ret map[string]string) {
 	ret = make(map[string]string)
 	for _, d := range f.Decls {
@@ -303,11 +334,4 @@ func insertIfUnExist(i string, sl *[]string) {
 		}
 	}
 	*sl = append(*sl, i)
-}
-
-func writeGen(sc *searcher) (err error) {
-	if len(sc.elementMap) == 0 {
-		return
-	}
-	return sc.write()
 }

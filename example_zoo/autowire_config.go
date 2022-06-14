@@ -7,5 +7,8 @@ import (
 )
 
 var ConfigSet = wire.NewSet(
-	wire.FieldsOf(new(*Config), "ConfigField", "ConfigField2"),
+	wire.FieldsOf(new(*Config),
+		"AnonymousConfigField2",
+		"ConfigField",
+	),
 )

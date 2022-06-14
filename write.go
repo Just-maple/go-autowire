@@ -18,7 +18,7 @@ import (
 	"github.com/stoewer/go-strcase"
 )
 
-func (sc *searcher) clean() (err error) {
+func (sc *autoWireSearcher) clean() (err error) {
 	dirs, err := ioutil.ReadDir(sc.genPath)
 	if err != nil {
 		return
@@ -35,21 +35,20 @@ func (sc *searcher) clean() (err error) {
 	return
 }
 
-func (sc *searcher) write() (err error) {
+func (sc *autoWireSearcher) write() (err error) {
 	log.Printf("please wait for file [ %s ] writing ...", sc.genPath)
 	sc.sets = nil
 	_ = os.MkdirAll(sc.genPath, 0775)
 	_ = sc.clean()
 	for set, m := range sc.elementMap {
-		err = sc.writeSet(set, m)
-		if err != nil {
+		if err = sc.writeSet(set, m); err != nil {
 			return
 		}
 	}
 	return sc.writeSets()
 }
 
-func (sc *searcher) writeSets() (err error) {
+func (sc *autoWireSearcher) writeSets() (err error) {
 	if len(sc.sets) == 0 {
 		return
 	}
@@ -109,9 +108,9 @@ func (sc *searcher) writeSets() (err error) {
 	return
 }
 
-func (sc *searcher) writeSet(set string, m map[string]element) (err error) {
+func (sc *autoWireSearcher) writeSet(set string, elements map[string]element) (err error) {
 	var (
-		order  = make([]string, 0, len(m))
+		order  = make([]string, 0, len(elements))
 		pkgMap = make(map[string]map[string]string)
 
 		setName  = strings.Title(strcase.UpperCamelCase(set)) + "Set"
@@ -119,9 +118,9 @@ func (sc *searcher) writeSet(set string, m map[string]element) (err error) {
 		fs       = token.NewFileSet()
 	)
 
-	log.Printf("generating [ %s ]", fileName)
+	log.Printf("generating %s [ %s ]", setName, fileName)
 
-	for key := range m {
+	for key := range elements {
 		order = append(order, key)
 	}
 
@@ -133,26 +132,26 @@ func (sc *searcher) writeSet(set string, m map[string]element) (err error) {
 	//		pkg2 "xxx/xxx/pkg"
 	// 		pkg3 "xxx/xxx/xxx/pkg
 	// )
-	for _, key := range order {
-		t := m[key]
-		pkg, ok := pkgMap[t.pkg][t.pkgPath]
-		if len(pkgMap[t.pkg]) == 0 {
-			pkg = t.pkg
-			pkgMap[t.pkg] = map[string]string{
-				t.pkgPath: t.pkg,
+	for _, elementKey := range order {
+		elem := elements[elementKey]
+		pkg, ok := pkgMap[elem.pkg][elem.pkgPath]
+		if len(pkgMap[elem.pkg]) == 0 {
+			pkg = elem.pkg
+			pkgMap[elem.pkg] = map[string]string{
+				elem.pkgPath: elem.pkg,
 			}
 			ok = true
 		}
 		if ok {
-			t.pkg = pkg
-			m[key] = t
+			elem.pkg = pkg
+			elements[elementKey] = elem
 			continue
 		}
-		c := len(pkgMap[t.pkg]) + 1
-		newPkg := t.pkg + strconv.Itoa(c)
-		pkgMap[t.pkg][t.pkgPath] = newPkg
-		t.pkg = newPkg
-		m[key] = t
+		fixPkgDuplicate := len(pkgMap[elem.pkg]) + 1
+		newPkg := elem.pkg + strconv.Itoa(fixPkgDuplicate)
+		pkgMap[elem.pkg][elem.pkgPath] = newPkg
+		elem.pkg = newPkg
+		elements[elementKey] = elem
 	}
 
 	var (
@@ -171,7 +170,7 @@ func (sc *searcher) writeSet(set string, m map[string]element) (err error) {
 		// generate wire define
 		var (
 			wireItem []string
-			elem     = m[key]
+			elem     = elements[key]
 		)
 
 		if elem.pkgPath == pathPkg {
@@ -181,7 +180,9 @@ func (sc *searcher) writeSet(set string, m map[string]element) (err error) {
 		stName := appendPkg(elem.pkg, elem.name)
 
 		if elem.configWire {
-			wireItem = append(wireItem, fmt.Sprintf(`wire.FieldsOf(new(*%s),"%s")`, stName, strings.Join(elem.fields, `","`)))
+			sort.Strings(elem.fields)
+			wireItem = append(wireItem, fmt.Sprintf(`wire.FieldsOf(new(*%s),%s)`, stName,
+				"\n"+`"`+strings.Join(elem.fields, "\",\n\"")+`",`+"\n"))
 			sc.configElements = append(sc.configElements, elem)
 		} else {
 			if elem.constructor != "" {
@@ -199,13 +200,13 @@ func (sc *searcher) writeSet(set string, m map[string]element) (err error) {
 				}
 				wireItem = append(wireItem, fmt.Sprintf(`wire.Bind(new(%s), new(*%s))`, itfName, stName))
 			}
+
+			if elem.initWire {
+				sc.initElements = append(sc.initElements, elem)
+			}
 		}
 
 		data.Items = append(data.Items, strings.Join(wireItem, ",\n\t"))
-
-		if elem.initWire {
-			sc.initElements = append(sc.initElements, elem)
-		}
 
 		if len(elem.pkg) == 0 {
 			continue

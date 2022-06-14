@@ -1,7 +1,6 @@
 package gutowire
 
 import (
-	"bytes"
 	"fmt"
 	"log"
 	"os"
@@ -21,11 +20,11 @@ func newGenOpt(genPath string, opts ...Option) *opt {
 	for _, opt := range opts {
 		opt(o)
 	}
-	o.fix()
+	o.init()
 	return o
 }
 
-func (o *opt) fix() {
+func (o *opt) init() {
 	if len(o.pkg) == 0 {
 		var err error
 		o.pkg, err = getPathGoPkgName(o.genPath)
@@ -41,26 +40,29 @@ func (o *opt) fix() {
 	}
 }
 
-func RunWire(genPath string, opts ...Option) (err error) {
-	if err = SearchAllPath(genPath, opts...); err != nil {
+func RunAutoWire(genPath string, opts ...Option) (err error) {
+	if err = RunAutoWireGen(genPath, opts...); err != nil {
 		return
 	}
 	log.Printf("write wire files success")
+	return runWire(genPath)
+}
+
+func runWire(path string) (err error) {
 	log.Printf("start runnning wire")
+
 	p, e := exec.LookPath("wire")
 	if e != nil {
 		err = fmt.Errorf("wire not found: %v \n%s\n", e,
 			"please install wire by [ go get github.com/google/wire/cmd/wire ]")
 	}
 	cmd := exec.Command(p)
-	var s bytes.Buffer
-	cmd.Dir = genPath
-	cmd.Stderr = &s
-	err = cmd.Run()
+	cmd.Dir = path
+	ret, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("[gen failed] %s", s.String())
+		log.Printf("[gen failed] %s", ret)
 		return
 	}
-	log.Printf("[gen success] %s", s.String())
+	log.Printf("[gen success] %s", ret)
 	return
 }

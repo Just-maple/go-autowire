@@ -24,14 +24,16 @@ func InitializeZoo(c0 *Config) (*Zoo, func(), error) {
 	lion := NewLion()
 	bird := &Bird{}
 	configField := c0.ConfigField
-	configField2 := c0.ConfigField2
+	anonymousConfigField2 := c0.AnonymousConfigField2
+	tiger := InitSomeTiger()
 	zoo := &Zoo{
-		Cat:          cat,
-		Dog:          dog,
-		Lion:         lion,
-		FlyAnimal:    bird,
-		ConfigField:  configField,
-		ConfigField2: configField2,
+		Cat:                   cat,
+		Dog:                   dog,
+		Lion:                  lion,
+		FlyAnimal:             bird,
+		ConfigField:           configField,
+		AnonymousConfigField2: anonymousConfigField2,
+		Tiger:                 tiger,
 	}
 	return zoo, func() {
 	}, nil

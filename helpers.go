@@ -59,7 +59,6 @@ func getGoModFilePath() (modPath string) {
 
 func getPathGoPkgName(pathStr string) (pkg string, err error) {
 	info, err := ioutil.ReadDir(pathStr)
-	// todo:if not exist return getGoPkgNameByDir
 	if err != nil {
 		return
 	}
@@ -71,6 +70,9 @@ func getPathGoPkgName(pathStr string) (pkg string, err error) {
 			continue
 		}
 		if strings.HasSuffix(f.Name(), ".go") {
+			if strings.HasSuffix(f.Name(), "_test.go") {
+				continue
+			}
 			bs, err := ioutil.ReadFile(filepath.Join(pathStr, f.Name()))
 			if err != nil {
 				return "", err
@@ -78,6 +80,9 @@ func getPathGoPkgName(pathStr string) (pkg string, err error) {
 			f, err := parser.ParseFile(token.NewFileSet(), "", bs, parser.ParseComments)
 			if err != nil {
 				return "", err
+			}
+			if strings.HasSuffix(f.Name.Name, "_test") {
+				continue
 			}
 			return f.Name.Name, nil
 		}
