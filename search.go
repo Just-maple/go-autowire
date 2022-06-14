@@ -227,18 +227,19 @@ func (sc *autoWireSearcher) analysisWireTag(tag, filePath string, decl *tmpDecl,
 		setName = strcase.LowerCamelCase(options["set"])
 	}
 
-	if sc.elementMap[setName] == nil {
-		sc.elementMap[setName] = make(map[string]element)
-	}
-
 	defer func() {
 		log.Printf("wire object collected [ %sSet ] : %s\n", strcase.LowerCamelCase(setName), wireElement.pkg+"."+wireElement.name)
+		if sc.elementMap[setName] == nil {
+			sc.elementMap[setName] = make(map[string]element)
+		}
 		sc.elementMap[setName][path.Join(pkgPath, name)] = wireElement
 	}()
 
 	// parse options
 	for key, value := range options {
 		switch key {
+		case "init", "config":
+			itemFunc = key
 		case "set":
 			continue
 		case "new":
@@ -257,6 +258,7 @@ func (sc *autoWireSearcher) analysisWireTag(tag, filePath string, decl *tmpDecl,
 	switch itemFunc {
 	case "init":
 		wireElement.initWire = true
+		setName = "init"
 	case "config":
 		if decl.typeSpec == nil {
 			break
@@ -266,6 +268,7 @@ func (sc *autoWireSearcher) analysisWireTag(tag, filePath string, decl *tmpDecl,
 			break
 		}
 		wireElement.configWire = true
+		setName = "config"
 		for _, f := range st.Fields.List {
 			fieldName := fmt.Sprintf("%s", f.Type)
 			if f.Names != nil {
