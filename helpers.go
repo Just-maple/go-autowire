@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/Just-maple/xtoolinternal/gocommand"
 	"github.com/Just-maple/xtoolinternal/imports"
@@ -18,7 +19,14 @@ import (
 	imports2 "golang.org/x/tools/imports"
 )
 
-var modTmp string
+var (
+	modTmp        string
+	o             sync.Once
+	importModBase = func() string {
+		r, _ := getModBase()
+		return r
+	}()
+)
 
 func getModBase() (modBase string, err error) {
 	modpath := getGoModFilePath()
@@ -44,17 +52,14 @@ func getGoModDir() (modPath string) {
 }
 
 func getGoModFilePath() (modPath string) {
-	if len(modTmp) > 0 {
-		return modTmp
-	}
-	cmd := exec.Command("go", "env", "GOMOD")
-	stdout := &bytes.Buffer{}
-	cmd.Stdout = stdout
-	_ = cmd.Run()
-	mod := stdout.String()
-	mod = strings.Trim(mod, "\n")
-	modTmp = mod
-	return mod
+	o.Do(func() {
+		cmd := exec.Command("go", "env", "GOMOD")
+		stdout := &bytes.Buffer{}
+		cmd.Stdout = stdout
+		_ = cmd.Run()
+		modTmp = strings.Trim(stdout.String(), "\n")
+	})
+	return modTmp
 }
 
 func getPathGoPkgName(pathStr string) (pkg string, err error) {
@@ -113,9 +118,7 @@ func importAndWrite(filename string, src []byte) (err error) {
 		fmt.Printf("%s", src)
 		return
 	}
-
-	err = ioutil.WriteFile(filename, writeData, os.FileMode(0664))
-	return
+	return ioutil.WriteFile(filename, writeData, os.FileMode(0664))
 }
 
 var (
@@ -124,7 +127,7 @@ var (
 		Env: &imports.ProcessEnv{
 			GocmdRunner: &gocommand.Runner{},
 		},
-		LocalPrefix: imports2.LocalPrefix,
+		LocalPrefix: importModBase,
 		AllErrors:   opt2.AllErrors,
 		Comments:    opt2.Comments,
 		FormatOnly:  opt2.FormatOnly,
@@ -132,8 +135,11 @@ var (
 		TabIndent:   opt2.TabIndent,
 		TabWidth:    opt2.TabWidth,
 	}
+	importMu sync.Mutex
 )
 
 func importProcess(src []byte) (ret []byte, err error) {
+	importMu.Lock()
+	defer importMu.Unlock()
 	return imports.Process("", src, intopt)
 }

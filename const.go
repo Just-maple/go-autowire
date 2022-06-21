@@ -2,7 +2,10 @@ package gutowire
 
 import (
 	"go/ast"
+	"sync"
 	"text/template"
+
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -66,6 +69,8 @@ type (
 		initElements   []element
 		configElements []element
 		initWire       []string
+		wg             errgroup.Group
+		sync.Mutex
 	}
 
 	element struct {

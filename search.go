@@ -52,7 +52,10 @@ func (sc *autoWireSearcher) SearchAllPath(file string) (err error) {
 		if f.IsDir() || !strings.HasSuffix(fn, ".go") || strings.HasSuffix(fn, "_test.go") {
 			return nil
 		}
-		return sc.searchWire(path)
+		sc.wg.Go(func() error {
+			return sc.searchWire(path)
+		})
+		return sc.wg.Wait()
 	})
 }
 
@@ -229,10 +232,12 @@ func (sc *autoWireSearcher) analysisWireTag(tag, filePath string, decl *tmpDecl,
 
 	defer func() {
 		log.Printf("wire object collected [ %sSet ] : %s\n", strcase.LowerCamelCase(setName), wireElement.pkg+"."+wireElement.name)
+		sc.Lock()
 		if sc.elementMap[setName] == nil {
 			sc.elementMap[setName] = make(map[string]element)
 		}
 		sc.elementMap[setName][path.Join(pkgPath, name)] = wireElement
+		sc.Unlock()
 	}()
 
 	// parse options

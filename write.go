@@ -40,11 +40,19 @@ func (sc *autoWireSearcher) write() (err error) {
 	sc.sets = nil
 	_ = os.MkdirAll(sc.genPath, 0775)
 	_ = sc.clean()
+
 	for set, m := range sc.elementMap {
-		if err = sc.writeSet(set, m); err != nil {
-			return
-		}
+		set := set
+		m := m
+		sc.wg.Go(func() error {
+			return sc.writeSet(set, m)
+		})
 	}
+
+	if err = sc.wg.Wait(); err != nil {
+		return
+	}
+
 	return sc.writeSets()
 }
 
@@ -53,59 +61,69 @@ func (sc *autoWireSearcher) writeSets() (err error) {
 		return
 	}
 
-	sort.Strings(sc.sets)
+	sc.wg.Go(func() (err error) {
+		sort.Strings(sc.sets)
 
-	var (
-		fileName        = filepath.Join(sc.genPath, filePrefix+"_sets.go")
-		wiregenFileName = filepath.Join(sc.genPath, "wire.gen.go")
-		bf              = bytes.NewBuffer(nil)
+		var (
+			fileName = filepath.Join(sc.genPath, filePrefix+"_sets.go")
+			bf       = bytes.NewBuffer(nil)
 
-		set = wireSet{
-			Package: sc.pkg,
-			SetName: "Sets",
-			Items:   []string{strings.Join(sc.sets, ",\n\t")},
+			set = wireSet{
+				Package: sc.pkg,
+				SetName: "Sets",
+				Items:   []string{strings.Join(sc.sets, ",\n\t")},
+			}
+		)
+
+		if err = setTemp.Execute(bf, &set); err != nil {
+			return
 		}
-	)
 
-	if err = setTemp.Execute(bf, &set); err != nil {
+		if err = importAndWrite(fileName, bf.Bytes()); err != nil {
+			return
+		}
 		return
-	}
-
-	if err = importAndWrite(fileName, bf.Bytes()); err != nil || len(sc.initElements) == 0 || len(sc.initWire) == 0 {
-		return
-	}
-
-	sort.Slice(sc.initElements, func(i, j int) bool {
-		return sc.initElements[i].name < sc.initElements[j].name
 	})
 
-	inits := []string{fmt.Sprintf(initTemplateHead, sc.pkg)}
-	configs := make([]string, 0, len(sc.configElements))
+	sc.wg.Go(func() (err error) {
+		if len(sc.initElements) == 0 || len(sc.initWire) == 0 {
+			return
+		}
 
-	sort.Slice(sc.configElements, func(i, j int) bool {
-		return sc.configElements[i].name < sc.configElements[j].name
+		sort.Slice(sc.initElements, func(i, j int) bool {
+			return sc.initElements[i].name < sc.initElements[j].name
+		})
+
+		inits := []string{fmt.Sprintf(initTemplateHead, sc.pkg)}
+		configs := make([]string, 0, len(sc.configElements))
+
+		sort.Slice(sc.configElements, func(i, j int) bool {
+			return sc.configElements[i].name < sc.configElements[j].name
+		})
+
+		for i, c := range sc.configElements {
+			configs = append(configs, fmt.Sprintf(`c%d *%s`, i, appendPkg(c.pkg, c.name)))
+		}
+
+		paramConfig := strings.Join(configs, ",")
+
+		if len(sc.initWire) == 1 && sc.initWire[0] == "*" {
+			for _, w := range sc.initElements {
+				inits = append(inits, fmt.Sprintf(initItemTemplate, w.name, paramConfig, "*"+appendPkg(w.pkg, w.name)))
+			}
+		} else {
+			for _, i := range sc.initWire {
+				sp := strings.Split(i, ".")
+				inits = append(inits, fmt.Sprintf(initItemTemplate, sp[len(sp)-1], paramConfig, i))
+			}
+		}
+
+		wireGenData := strings.Join(inits, "\n")
+		err = importAndWrite(filepath.Join(sc.genPath, "wire.gen.go"), []byte(wireGenData))
+		return
 	})
 
-	for i, c := range sc.configElements {
-		configs = append(configs, fmt.Sprintf(`c%d *%s`, i, appendPkg(c.pkg, c.name)))
-	}
-
-	paramConfig := strings.Join(configs, ",")
-
-	if len(sc.initWire) == 1 && sc.initWire[0] == "*" {
-		for _, w := range sc.initElements {
-			inits = append(inits, fmt.Sprintf(initItemTemplate, w.name, paramConfig, "*"+appendPkg(w.pkg, w.name)))
-		}
-	} else {
-		for _, i := range sc.initWire {
-			sp := strings.Split(i, ".")
-			inits = append(inits, fmt.Sprintf(initItemTemplate, sp[len(sp)-1], paramConfig, i))
-		}
-	}
-
-	wireGenData := strings.Join(inits, "\n")
-	err = importAndWrite(wiregenFileName, []byte(wireGenData))
-	return
+	return sc.wg.Wait()
 }
 
 func (sc *autoWireSearcher) writeSet(set string, elements map[string]element) (err error) {
@@ -183,7 +201,9 @@ func (sc *autoWireSearcher) writeSet(set string, elements map[string]element) (e
 			sort.Strings(elem.fields)
 			wireItem = append(wireItem, fmt.Sprintf(`wire.FieldsOf(new(*%s),%s)`, stName,
 				"\n"+`"`+strings.Join(elem.fields, "\",\n\"")+`",`+"\n"))
+			sc.Lock()
 			sc.configElements = append(sc.configElements, elem)
+			sc.Unlock()
 		} else {
 			if elem.constructor != "" {
 				wireItem = append(wireItem, appendPkg(elem.pkg, elem.constructor))
@@ -202,7 +222,9 @@ func (sc *autoWireSearcher) writeSet(set string, elements map[string]element) (e
 			}
 
 			if elem.initWire {
+				sc.Lock()
 				sc.initElements = append(sc.initElements, elem)
+				sc.Unlock()
 			}
 		}
 
@@ -225,7 +247,9 @@ func (sc *autoWireSearcher) writeSet(set string, elements map[string]element) (e
 		importPkgs = append(importPkgs, imp)
 	}
 
+	sc.Lock()
 	sc.sets = append(sc.sets, setName)
+	sc.Unlock()
 
 	if err = setTemp.Execute(src, data); err != nil {
 		return
